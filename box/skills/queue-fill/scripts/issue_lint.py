@@ -77,7 +77,7 @@ HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.*?)[ \t#]*$")
 # them) or tildes. A closer has only ASCII spaces or tabs after its run.
 FENCE = re.compile(r"^(`{3,}(?=[^`]*$)|~{3,})(.*)$")
 # Anything that looks like a fence: a run of three after whitespace, list or quote markers.
-FENCE_LIKE = re.compile(r"^[\s>]*(?:(?:[-*+]|\d{1,9}[.)])\s+[\s>]*)*(?:`{3}|~{3})")
+FENCE_LIKE = re.compile(r"^[\s>]*(?:(?:[-*+]|\d{1,9}[.)])\s[\s>]*)*(?:`{3}|~{3})")
 SETEXT = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
 HTML = re.compile(r"^ {0,3}<(?:!--|[!?]|/?[A-Za-z][A-Za-z0-9-]*(?:[ \t/>]|$))")
 # A comment that closes on its own line, such as a tool's marker, hides nothing: CommonMark ends
