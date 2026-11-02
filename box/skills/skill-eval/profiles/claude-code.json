@@ -1,0 +1,22 @@
+{
+  "about": "Claude Code in print mode. Sessions may edit files in their scratch workspace; any other tool needs the task's `allow` list. Spend comes from the result event's total_cost_usd and is capped by --max-budget-usd.",
+  "command": ["claude", "-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
+              "--permission-mode", "acceptEdits", "--permission-prompts", "none"],
+  "budget_args": ["--max-budget-usd", "{budget}"],
+  "model_args": ["--model", "{model}"],
+  "allow_args": ["--allowedTools", "{allow}"],
+  "allow_join": ",",
+  "default_allow": ["Read", "Edit", "Write", "Glob", "Grep", "Skill"],
+  "judge_args": ["--tools", ""],
+  "skills_dir": ".claude/skills",
+  "result": {"match": {"type": "result"}, "field": "result"},
+  "cost": {"match": {"type": "result"}, "field": "total_cost_usd"},
+  "commands": [{"match": {"type": "tool_use", "name": "Bash"}, "field": "input.command", "id": "id"}],
+  "command_results": {"match": {"type": "tool_result"}, "id": "tool_use_id", "output": "content",
+                      "error": "is_error", "denied": "^(Claude requested permissions to use |Permission to use \\S+ (with command .* )?has been denied)"},
+  "command_denials": [{"match": {"type": "system", "subtype": "permission_denied"}, "field": "tool_use_id"}],
+  "skill_used": [
+    {"match": {"type": "tool_use", "name": "Skill"}, "field": "input.skill"},
+    {"match": {"type": "tool_use", "name": "Read"}, "field": "input.file_path", "contains": "/{skill}/SKILL.md"}
+  ]
+}

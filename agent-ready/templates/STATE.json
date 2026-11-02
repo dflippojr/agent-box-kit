@@ -1,0 +1,13 @@
+{
+  "goal": "One sentence: what this work item must achieve.",
+  "facts": [
+    "Things learned that the next session should not re-derive."
+  ],
+  "files_modified": [
+    { "path": "src/example.py", "change": "M (regenerate from: git diff --name-status <base>...HEAD)" }
+  ],
+  "errors": [
+    { "what": "Command or approach that failed", "cause": "Why it failed", "dead_end": true }
+  ],
+  "next_step": "The exact next action."
+}

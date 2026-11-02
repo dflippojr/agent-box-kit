@@ -1,0 +1,8 @@
+diff --git a/target.py b/target.py
+index 5500858..7b240a5 100644
+--- a/target.py
++++ b/target.py
+@@ -1,2 +1,2 @@
+ def overlaps(a_start, a_end, b_start, b_end):
+-    return a_start <= b_end and b_start <= a_end
++    return a_start < b_end and b_start < a_end

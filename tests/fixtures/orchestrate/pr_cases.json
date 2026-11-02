@@ -1,0 +1,656 @@
+{
+ "base": {
+  "repos/owner/app/pulls/12": {
+   "number": 12,
+   "body": "Closes #7\n\nRounds invoice totals half up.\n\n## Proof\n\n| Criterion | How verified | Evidence |\n|---|---|---|\n| Totals round half up | test_round_half_up | 1 passed |\n| Negative totals keep their sign | test_negative_total | 1 passed |\n\n### Not verified\nCurrencies with three decimal places.\n\n### Gate changes\nNone.\n",
+   "labels": [],
+   "head": {
+    "sha": "0000000000000000000000000000000000000012",
+    "ref": "worker/issue-7",
+    "repo": {
+     "full_name": "owner/app"
+    }
+   }
+  },
+  "repos/owner/app/issues/12/events?per_page=100&page=1": [
+   {
+    "event": "labeled",
+    "actor": {
+     "login": "worker-bot"
+    },
+    "created_at": "2026-10-05T09:58:00Z",
+    "label": {
+     "name": "review:security"
+    }
+   }
+  ],
+  "repos/owner/app/commits/0000000000000000000000000000000000000012/check-runs?per_page=100&page=1": {
+   "total_count": 3,
+   "check_runs": [
+    {
+     "id": 1,
+     "name": "tests",
+     "status": "completed",
+     "conclusion": "success"
+    },
+    {
+     "id": 2,
+     "name": "review",
+     "status": "completed",
+     "conclusion": "success"
+    },
+    {
+     "id": 3,
+     "name": "deploy-preview",
+     "status": "completed",
+     "conclusion": "skipped"
+    }
+   ]
+  },
+  "repos/owner/app/commits/0000000000000000000000000000000000000012/status?per_page=100": {
+   "state": "success",
+   "statuses": [
+    {
+     "context": "lint",
+     "state": "success"
+    }
+   ]
+  },
+  "graphql": {
+   "data": {
+    "repository": {
+     "pullRequest": {
+      "reviewThreads": {
+       "nodes": [
+        {
+         "isResolved": true,
+         "path": "app/invoice.ext",
+         "line": 3,
+         "comments": {
+          "nodes": [
+           {
+            "author": {
+             "login": "reviewer-bot"
+            }
+           }
+          ]
+         }
+        }
+       ],
+       "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": null
+       }
+      }
+     }
+    }
+   }
+  },
+  "repos/owner/app/activity?ref=refs/heads/worker/issue-7&per_page=100": [
+   {
+    "activity_type": "push",
+    "after": "0000000000000000000000000000000000000011",
+    "timestamp": "2026-10-05T08:00:00Z"
+   },
+   {
+    "activity_type": "push",
+    "after": "0000000000000000000000000000000000000012",
+    "timestamp": "2026-10-05T10:00:00Z"
+   }
+  ]
+ },
+ "cases": {
+  "all green": {},
+  "pending check": {
+   "repos/owner/app/commits/0000000000000000000000000000000000000012/check-runs?per_page=100&page=1": {
+    "total_count": 2,
+    "check_runs": [
+     {
+      "id": 1,
+      "name": "tests",
+      "status": "in_progress",
+      "conclusion": null
+     },
+     {
+      "id": 2,
+      "name": "review",
+      "status": "completed",
+      "conclusion": "success"
+     }
+    ]
+   }
+  },
+  "failed check": {
+   "repos/owner/app/commits/0000000000000000000000000000000000000012/check-runs?per_page=100&page=1": {
+    "total_count": 2,
+    "check_runs": [
+     {
+      "id": 1,
+      "name": "tests",
+      "status": "completed",
+      "conclusion": "failure"
+     },
+     {
+      "id": 2,
+      "name": "review",
+      "status": "completed",
+      "conclusion": "success"
+     }
+    ]
+   }
+  },
+  "cancelled check": {
+   "repos/owner/app/commits/0000000000000000000000000000000000000012/check-runs?per_page=100&page=1": {
+    "total_count": 2,
+    "check_runs": [
+     {
+      "id": 1,
+      "name": "tests",
+      "status": "completed",
+      "conclusion": "cancelled"
+     },
+     {
+      "id": 2,
+      "name": "review",
+      "status": "completed",
+      "conclusion": "success"
+     }
+    ]
+   }
+  },
+  "failed status": {
+   "repos/owner/app/commits/0000000000000000000000000000000000000012/status?per_page=100": {
+    "state": "failure",
+    "statuses": [
+     {
+      "context": "lint",
+      "state": "error"
+     }
+    ]
+   }
+  },
+  "rerun passed": {
+   "repos/owner/app/commits/0000000000000000000000000000000000000012/check-runs?per_page=100&page=1": {
+    "total_count": 2,
+    "check_runs": [
+     {
+      "id": 1,
+      "name": "tests",
+      "status": "completed",
+      "conclusion": "failure"
+     },
+     {
+      "id": 4,
+      "name": "tests",
+      "status": "completed",
+      "conclusion": "success"
+     }
+    ]
+   }
+  },
+  "no checks": {
+   "repos/owner/app/commits/0000000000000000000000000000000000000012/check-runs?per_page=100&page=1": {
+    "total_count": 0,
+    "check_runs": []
+   },
+   "repos/owner/app/commits/0000000000000000000000000000000000000012/status?per_page=100": {
+    "state": "pending",
+    "statuses": []
+   }
+  },
+  "unresolved thread": {
+   "graphql": {
+    "data": {
+     "repository": {
+      "pullRequest": {
+       "reviewThreads": {
+        "nodes": [
+         {
+          "isResolved": true,
+          "path": "app/invoice.ext",
+          "line": 3,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         },
+         {
+          "isResolved": false,
+          "path": "app/invoice.ext",
+          "line": 18,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         }
+        ],
+        "pageInfo": {
+         "hasNextPage": false,
+         "endCursor": null
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "unresolved thread on page 2": {
+   "graphql": {
+    "data": {
+     "repository": {
+      "pullRequest": {
+       "reviewThreads": {
+        "nodes": [
+         {
+          "isResolved": true,
+          "path": "app/invoice.ext",
+          "line": 3,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         }
+        ],
+        "pageInfo": {
+         "hasNextPage": true,
+         "endCursor": "c1"
+        }
+       }
+      }
+     }
+    }
+   },
+   "graphql after=c1": {
+    "data": {
+     "repository": {
+      "pullRequest": {
+       "reviewThreads": {
+        "nodes": [
+         {
+          "isResolved": false,
+          "path": "app/invoice.ext",
+          "line": 40,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         }
+        ],
+        "pageInfo": {
+         "hasNextPage": false,
+         "endCursor": null
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "accepted by owner": {
+   "graphql": {
+    "data": {
+     "repository": {
+      "pullRequest": {
+       "reviewThreads": {
+        "nodes": [
+         {
+          "isResolved": true,
+          "path": "app/invoice.ext",
+          "line": 3,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         },
+         {
+          "isResolved": false,
+          "path": "app/invoice.ext",
+          "line": 18,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         }
+        ],
+        "pageInfo": {
+         "hasNextPage": false,
+         "endCursor": null
+        }
+       }
+      }
+     }
+    }
+   },
+   "repos/owner/app/pulls/12": {
+    "number": 12,
+    "body": "Closes #7\n\nRounds invoice totals half up.\n\n## Proof\n\n| Criterion | How verified | Evidence |\n|---|---|---|\n| Totals round half up | test_round_half_up | 1 passed |\n| Negative totals keep their sign | test_negative_total | 1 passed |\n\n### Not verified\nCurrencies with three decimal places.\n\n### Gate changes\nNone.\n",
+    "labels": [
+     {
+      "name": "findings-accepted"
+     }
+    ],
+    "head": {
+     "sha": "0000000000000000000000000000000000000012",
+     "ref": "worker/issue-7",
+     "repo": {
+      "full_name": "owner/app"
+     }
+    }
+   },
+   "repos/owner/app/issues/12/events?per_page=100&page=1": [
+    {
+     "event": "labeled",
+     "actor": {
+      "login": "owner"
+     },
+     "created_at": "2026-10-05T12:00:00Z",
+     "label": {
+      "name": "findings-accepted"
+     }
+    }
+   ]
+  },
+  "accept label by non-owner": {
+   "graphql": {
+    "data": {
+     "repository": {
+      "pullRequest": {
+       "reviewThreads": {
+        "nodes": [
+         {
+          "isResolved": true,
+          "path": "app/invoice.ext",
+          "line": 3,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         },
+         {
+          "isResolved": false,
+          "path": "app/invoice.ext",
+          "line": 18,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         }
+        ],
+        "pageInfo": {
+         "hasNextPage": false,
+         "endCursor": null
+        }
+       }
+      }
+     }
+    }
+   },
+   "repos/owner/app/pulls/12": {
+    "number": 12,
+    "body": "Closes #7\n\nRounds invoice totals half up.\n\n## Proof\n\n| Criterion | How verified | Evidence |\n|---|---|---|\n| Totals round half up | test_round_half_up | 1 passed |\n| Negative totals keep their sign | test_negative_total | 1 passed |\n\n### Not verified\nCurrencies with three decimal places.\n\n### Gate changes\nNone.\n",
+    "labels": [
+     {
+      "name": "findings-accepted"
+     }
+    ],
+    "head": {
+     "sha": "0000000000000000000000000000000000000012",
+     "ref": "worker/issue-7",
+     "repo": {
+      "full_name": "owner/app"
+     }
+    }
+   },
+   "repos/owner/app/issues/12/events?per_page=100&page=1": [
+    {
+     "event": "labeled",
+     "actor": {
+      "login": "worker-bot"
+     },
+     "created_at": "2026-10-05T12:00:00Z",
+     "label": {
+      "name": "findings-accepted"
+     }
+    }
+   ]
+  },
+  "accept label before push": {
+   "graphql": {
+    "data": {
+     "repository": {
+      "pullRequest": {
+       "reviewThreads": {
+        "nodes": [
+         {
+          "isResolved": true,
+          "path": "app/invoice.ext",
+          "line": 3,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         },
+         {
+          "isResolved": false,
+          "path": "app/invoice.ext",
+          "line": 18,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         }
+        ],
+        "pageInfo": {
+         "hasNextPage": false,
+         "endCursor": null
+        }
+       }
+      }
+     }
+    }
+   },
+   "repos/owner/app/pulls/12": {
+    "number": 12,
+    "body": "Closes #7\n\nRounds invoice totals half up.\n\n## Proof\n\n| Criterion | How verified | Evidence |\n|---|---|---|\n| Totals round half up | test_round_half_up | 1 passed |\n| Negative totals keep their sign | test_negative_total | 1 passed |\n\n### Not verified\nCurrencies with three decimal places.\n\n### Gate changes\nNone.\n",
+    "labels": [
+     {
+      "name": "findings-accepted"
+     }
+    ],
+    "head": {
+     "sha": "0000000000000000000000000000000000000012",
+     "ref": "worker/issue-7",
+     "repo": {
+      "full_name": "owner/app"
+     }
+    }
+   },
+   "repos/owner/app/issues/12/events?per_page=100&page=1": [
+    {
+     "event": "labeled",
+     "actor": {
+      "login": "owner"
+     },
+     "created_at": "2026-10-05T09:00:00Z",
+     "label": {
+      "name": "findings-accepted"
+     }
+    }
+   ]
+  },
+  "accept label removed": {
+   "graphql": {
+    "data": {
+     "repository": {
+      "pullRequest": {
+       "reviewThreads": {
+        "nodes": [
+         {
+          "isResolved": true,
+          "path": "app/invoice.ext",
+          "line": 3,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         },
+         {
+          "isResolved": false,
+          "path": "app/invoice.ext",
+          "line": 18,
+          "comments": {
+           "nodes": [
+            {
+             "author": {
+              "login": "reviewer-bot"
+             }
+            }
+           ]
+          }
+         }
+        ],
+        "pageInfo": {
+         "hasNextPage": false,
+         "endCursor": null
+        }
+       }
+      }
+     }
+    }
+   },
+   "repos/owner/app/issues/12/events?per_page=100&page=1": [
+    {
+     "event": "labeled",
+     "actor": {
+      "login": "owner"
+     },
+     "created_at": "2026-10-05T12:00:00Z",
+     "label": {
+      "name": "findings-accepted"
+     }
+    },
+    {
+     "event": "unlabeled",
+     "actor": {
+      "login": "owner"
+     },
+     "created_at": "2026-10-05T13:00:00Z",
+     "label": {
+      "name": "findings-accepted"
+     }
+    }
+   ]
+  },
+  "gate label by non-owner": {
+   "repos/owner/app/issues/12/events?per_page=100&page=1": [
+    {
+     "event": "labeled",
+     "actor": {
+      "login": "worker-bot"
+     },
+     "created_at": "2026-10-05T11:00:00Z",
+     "label": {
+      "name": "gate-change-approved"
+     }
+    }
+   ]
+  },
+  "missing proof table": {
+   "repos/owner/app/pulls/12": {
+    "number": 12,
+    "body": "Closes #7\n\nRounds invoice totals half up.\n",
+    "labels": [],
+    "head": {
+     "sha": "0000000000000000000000000000000000000012",
+     "ref": "worker/issue-7",
+     "repo": {
+      "full_name": "owner/app"
+     }
+    }
+   }
+  },
+  "proof table with an empty cell": {
+   "repos/owner/app/pulls/12": {
+    "number": 12,
+    "body": "Closes #7\n\nRounds invoice totals half up.\n\n## Proof\n\n| Criterion | How verified | Evidence |\n|---|---|---|\n| Totals round half up | test_round_half_up |  |\n| Negative totals keep their sign | test_negative_total | 1 passed |\n\n### Not verified\nCurrencies with three decimal places.\n\n### Gate changes\nNone.\n",
+    "labels": [],
+    "head": {
+     "sha": "0000000000000000000000000000000000000012",
+     "ref": "worker/issue-7",
+     "repo": {
+      "full_name": "owner/app"
+     }
+    }
+   }
+  },
+  "missing closing reference": {
+   "repos/owner/app/pulls/12": {
+    "number": 12,
+    "body": "Rounds invoice totals half up.\n\n## Proof\n\n| Criterion | How verified | Evidence |\n|---|---|---|\n| Totals round half up | test_round_half_up | 1 passed |\n| Negative totals keep their sign | test_negative_total | 1 passed |\n\n### Not verified\nCurrencies with three decimal places.\n\n### Gate changes\nNone.\n",
+    "labels": [],
+    "head": {
+     "sha": "0000000000000000000000000000000000000012",
+     "ref": "worker/issue-7",
+     "repo": {
+      "full_name": "owner/app"
+     }
+    }
+   }
+  }
+ }
+}

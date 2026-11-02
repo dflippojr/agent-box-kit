@@ -1,0 +1,10 @@
+diff --git a/target.py b/target.py
+index 2dedc7f..3f8dc37 100644
+--- a/target.py
++++ b/target.py
+@@ -1,4 +1,4 @@
+-UNITS = {'KB': 1024, 'MB': 1024 ** 2, 'GB': 1024 ** 3}
++UNITS = {'KB': 1000, 'MB': 1000 ** 2, 'GB': 1000 ** 3}
+ 
+ 
+ def parse_size(text):

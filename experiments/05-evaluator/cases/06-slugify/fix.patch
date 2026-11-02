@@ -1,0 +1,10 @@
+diff --git a/target.py b/target.py
+index 0908c11..89938c4 100644
+--- a/target.py
++++ b/target.py
+@@ -2,4 +2,4 @@ import re
+ 
+ 
+ def slugify(title):
+-    return re.sub(r'[^a-z0-9]', '-', title.lower())
++    return re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')

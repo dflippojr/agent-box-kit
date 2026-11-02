@@ -1,0 +1,36 @@
+# The merge gate. Require the check `gate` on @@DEFAULT_BRANCH@@ (rulesets or branch
+# protection), so a red head commit cannot merge. It runs scripts/check.py and nothing else,
+# so the local run and CI cannot drift: add steps there, not here.
+name: gate
+
+on:
+  pull_request:
+  push:
+    branches: [@@DEFAULT_BRANCH@@]
+
+permissions:
+  contents: read
+
+# A newer push may cancel a PR's run, never a default-branch run: every merge gets a full run.
+# A newly queued run cancels a pending run in its group whatever cancel-in-progress says, so
+# each default-branch push gets a group of its own (its commit) and only a PR's runs share one.
+concurrency:
+  group: gate-${{ github.ref }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      # Adapt this step and the Python version to how the project installs locally (for a src
+      # layout or dev extras, `python -m pip install -e ".[dev]"`); check.py does not install.
+      - name: Install test dependencies
+        run: |
+          python -m pip install pytest
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+      - name: Gate
+        run: python scripts/check.py

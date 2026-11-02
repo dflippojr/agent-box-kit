@@ -1,0 +1,11 @@
+[run]
+source =
+    agent-ready/scripts
+    box
+branch = True
+relative_files = True
+# Tests execute the scripts in child processes, often from temporary repositories.
+patch = subprocess
+
+[xml]
+output = coverage.xml

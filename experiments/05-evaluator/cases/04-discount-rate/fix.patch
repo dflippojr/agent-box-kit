@@ -1,0 +1,10 @@
+diff --git a/target.py b/target.py
+index 0e4c82a..905b2cd 100644
+--- a/target.py
++++ b/target.py
+@@ -1,4 +1,4 @@
+ def apply_discount(subtotal):
+     if subtotal >= 120:
+-        return round(subtotal * 0.90, 2)
++        return round(subtotal * 0.85, 2)
+     return subtotal

@@ -1,0 +1,314 @@
+[
+ {
+  "number": 1,
+  "title": "Add the export command",
+  "state": "CLOSED",
+  "createdAt": "2026-09-01T09:00:00Z",
+  "body": "",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "tier:standard",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ },
+ {
+  "number": 2,
+  "title": "Pick a storage format",
+  "state": "OPEN",
+  "createdAt": "2026-09-02T09:00:00Z",
+  "body": "",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "tier:frontier",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L1",
+    "name": "ready",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ },
+ {
+  "number": 3,
+  "title": "Round invoice totals half up",
+  "state": "OPEN",
+  "createdAt": "2026-09-05T09:00:00Z",
+  "body": "## Dependencies\nDependencies: #1\n",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "tier:standard",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L1",
+    "name": "ready",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L2",
+    "name": "P1",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ },
+ {
+  "number": 4,
+  "title": "Stream large exports",
+  "state": "OPEN",
+  "createdAt": "2026-09-06T09:00:00Z",
+  "body": "## Dependencies\nDependencies: #2\n",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "tier:standard",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L1",
+    "name": "ready",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L2",
+    "name": "P0",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ },
+ {
+  "number": 5,
+  "title": "Rename the config key",
+  "state": "OPEN",
+  "createdAt": "2026-09-03T09:00:00Z",
+  "body": "",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "ready",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L1",
+    "name": "P0",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ },
+ {
+  "number": 6,
+  "title": "Retry failed uploads",
+  "state": "OPEN",
+  "createdAt": "2026-09-04T09:00:00Z",
+  "body": "",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "tier:standard",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L1",
+    "name": "tier:frontier",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L2",
+    "name": "ready",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L3",
+    "name": "P1",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ },
+ {
+  "number": 7,
+  "title": "Fix the date parser",
+  "state": "OPEN",
+  "createdAt": "2026-09-04T10:00:00Z",
+  "body": "**Dependencies**\nnone\n",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "tier:mechanical",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L1",
+    "name": "ready",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L2",
+    "name": "P1",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ },
+ {
+  "number": 8,
+  "title": "Document the CLI flags",
+  "state": "OPEN",
+  "createdAt": "2026-08-30T09:00:00Z",
+  "body": "",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "tier:mechanical",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L1",
+    "name": "ready",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ },
+ {
+  "number": 9,
+  "title": "Pair the label printer",
+  "state": "OPEN",
+  "createdAt": "2026-09-07T09:00:00Z",
+  "body": "",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "tier:standard",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L1",
+    "name": "ready",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L2",
+    "name": "user-present",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L3",
+    "name": "P2",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ },
+ {
+  "number": 10,
+  "title": "Migrate the schema",
+  "state": "OPEN",
+  "createdAt": "2026-09-01T10:00:00Z",
+  "body": "",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "tier:frontier",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L1",
+    "name": "ready",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L2",
+    "name": "P0",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L3",
+    "name": "reserved",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ },
+ {
+  "number": 11,
+  "title": "Speed up the search",
+  "state": "OPEN",
+  "createdAt": "2026-09-01T11:00:00Z",
+  "body": "",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "tier:standard",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L1",
+    "name": "needs-refinement",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L2",
+    "name": "P0",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ },
+ {
+  "number": 12,
+  "title": "Add a dark theme",
+  "state": "OPEN",
+  "createdAt": "2026-09-08T09:00:00Z",
+  "body": "Dependencies: #1, #40\n",
+  "labels": [
+   {
+    "id": "L0",
+    "name": "tier:standard",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L1",
+    "name": "ready",
+    "description": "",
+    "color": "ededed"
+   },
+   {
+    "id": "L2",
+    "name": "P2",
+    "description": "",
+    "color": "ededed"
+   }
+  ]
+ }
+]

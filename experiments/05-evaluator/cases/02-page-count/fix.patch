@@ -1,0 +1,8 @@
+diff --git a/target.py b/target.py
+index 4c94518..b983f6e 100644
+--- a/target.py
++++ b/target.py
+@@ -1,2 +1,2 @@
+ def page_count(total, per_page):
+-    return total // per_page
++    return -(-total // per_page)

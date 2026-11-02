@@ -1,0 +1,11 @@
+case,heuristic_pick,grounded_literals
+01-backoff-cap,b,a=0/3 b=4/4 c=0/4
+02-page-count,a,a=3/3 b=0/3 c=0/3
+03-parse-size,c,a=0/2 b=0/2 c=2/2
+04-discount-rate,b,a=0/2 b=2/2 c=0/2
+05-percent-rounding,none,a=0/2 b=0/2 c=1/2
+06-slugify,a,a=2/2 b=0/2 c=0/2
+07-interval-overlap,b,a=0/3 b=4/4 c=0/3
+08-percent-change,none,a=0/3 b=2/3 c=1/3
+09-tax-control,none,a=0/2 b=0/2 c=0/2
+10-filename-control,none,a=0/2 b=0/2 c=0/2

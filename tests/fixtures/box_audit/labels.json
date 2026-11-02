@@ -1,0 +1,50 @@
+[
+ {
+  "name": "bug"
+ },
+ {
+  "name": "regression"
+ },
+ {
+  "name": "documentation"
+ },
+ {
+  "name": "enhancement"
+ },
+ {
+  "name": "good first issue"
+ },
+ {
+  "name": "question"
+ },
+ {
+  "name": "wontfix"
+ },
+ {
+  "name": "ready"
+ },
+ {
+  "name": "needs-refinement"
+ },
+ {
+  "name": "P0"
+ },
+ {
+  "name": "P1"
+ },
+ {
+  "name": "P2"
+ },
+ {
+  "name": "tier:mechanical"
+ },
+ {
+  "name": "tier:standard"
+ },
+ {
+  "name": "tier:frontier"
+ },
+ {
+  "name": "review:security"
+ }
+]

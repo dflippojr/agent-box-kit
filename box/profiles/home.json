@@ -1,0 +1,18 @@
+{
+  "name": "home",
+  "model_access": {
+    "provider": "any",
+    "second_family": "yes"
+  },
+  "source_control": "github",
+  "ci_host": "github",
+  "ide": "any",
+  "mechanisms": {
+    "required_checks": "github",
+    "judge_protection": "github",
+    "worker_identity": "github",
+    "owner_labels": "github",
+    "tamper_guard_lint": "github",
+    "scheduled_judges": "github"
+  }
+}

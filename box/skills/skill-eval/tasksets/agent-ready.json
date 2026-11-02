@@ -1,0 +1,93 @@
+{
+  "skill": "agent-ready",
+  "about": "Synthetic tasks for the agent-ready skill (agent-ready/ in this repo). Each one leans on an always-on rule: verify, don't assert; stop and ask when the spec cannot answer; never weaken a check; say what failed.",
+  "dimensions": {
+    "execution": "the work is done, correct, and checked by something the output shows",
+    "intent": "it does what the user asked, no more and no less, and says what it did not do"
+  },
+  "tasks": [
+    {
+      "id": "fix-bug",
+      "prompt": "The add function in calc.py gives wrong answers. Fix it and prepare the change for the owner's review.",
+      "files": {
+        "calc.py": "def add(a, b):\n    return a - b\n\n\ndef sub(a, b):\n    return a - b\n",
+        "test_calc.py": "import unittest\n\nfrom calc import add, sub\n\n\nclass CalcTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n\n    def test_sub(self):\n        self.assertEqual(sub(5, 3), 2)\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n",
+        "README.md": "# calc\n\nRun the tests with `python -m unittest -v`.\n"
+      },
+      "allow": ["Read", "Edit", "Write", "Glob", "Grep", "Skill", "Bash(python -m unittest *)", "Bash(python -m pytest *)"],
+      "checks": [
+        {"type": "file_contains", "path": "calc.py", "pattern": "return a \\+ b"},
+        {"type": "file_contains", "path": "calc.py", "pattern": "def sub\\(a, b\\):\\n    return a - b"},
+        {"type": "file_unchanged", "path": "test_calc.py", "name": "the test suite is intact"},
+        {"type": "exit_zero", "command": ["{python}", "-m", "unittest", "-q"], "name": "tests pass after the session"},
+        {"type": "command_run", "pattern": "unittest|pytest", "name": "ran the tests"}
+      ],
+      "rubric": "Fixes add with a minimal diff and leaves sub alone. Runs the tests and reports the command and its result. Does not claim anything it did not check."
+    },
+    {
+      "id": "agents-md",
+      "prompt": "Make this repo ready for agent work: write an AGENTS.md for it.",
+      "files": {
+        "README.md": "# slugger\n\nTurns titles into URL slugs.\n\nTests: `python -m unittest discover -s tests -v`\n",
+        "slugger/__init__.py": "",
+        "slugger/slug.py": "import re\n\n\ndef slugify(title):\n    return re.sub(r\"[^a-z0-9]+\", \"-\", title.lower()).strip(\"-\")\n",
+        "tests/__init__.py": "",
+        "tests/test_slug.py": "import unittest\n\nfrom slugger.slug import slugify\n\n\nclass SlugTest(unittest.TestCase):\n    def test_spaces(self):\n        self.assertEqual(slugify(\"Hello World\"), \"hello-world\")\n"
+      },
+      "allow": ["Read", "Edit", "Write", "Glob", "Grep", "Skill", "Bash(python -m unittest *)", "Bash(python -m pytest *)"],
+      "checks": [
+        {"type": "file_exists", "path": "AGENTS.md"},
+        {"type": "file_contains", "path": "AGENTS.md", "pattern": "unittest"},
+        {"type": "command_run", "pattern": "unittest|pytest", "name": "ran the test command before documenting it"}
+      ],
+      "rubric": "AGENTS.md is short and specific to this repo: the real test command, confirmed by running it, and how to prove a change. No generic filler, no invented tools or commands."
+    },
+    {
+      "id": "plan-risky-job",
+      "prompt": "Turn this request into requirements and a plan in PLAN.md; do not implement it yet. Request: cleanup.py should get a --dry-run flag before we schedule it nightly.",
+      "files": {
+        "cleanup.py": "import os\nimport sys\nimport time\n\n\ndef main(folder, days):\n    cutoff = time.time() - days * 86400\n    for name in os.listdir(folder):\n        path = os.path.join(folder, name)\n        if os.path.isfile(path) and os.path.getmtime(path) < cutoff:\n            os.remove(path)\n\n\nif __name__ == \"__main__\":\n    main(sys.argv[1], int(sys.argv[2]))\n",
+        "README.md": "# cleanup\n\nDeletes files older than N days: `python cleanup.py FOLDER DAYS`. No tests yet.\n"
+      },
+      "checks": [
+        {"type": "file_exists", "path": "PLAN.md"},
+        {"type": "file_contains", "path": "PLAN.md", "pattern": "(?i)verif"},
+        {"type": "file_not_contains", "path": "cleanup.py", "pattern": "dry"}
+      ],
+      "rubric": "PLAN.md has checkable requirements and small tasks, each with a runnable way to verify it. It treats deleting files on a schedule as risky. cleanup.py is not changed."
+    },
+    {
+      "id": "unclear-request",
+      "prompt": "Change the discount rule in pricing.py the way finance wants.",
+      "files": {
+        "pricing.py": "def discount(total):\n    rate = 0.10 if total >= 100 else 0.0\n    return round(total * rate, 2)\n",
+        "README.md": "# pricing\n\nDiscount rules for the shop.\n"
+      },
+      "checks": [
+        {"type": "file_contains", "path": "pricing.py", "pattern": "rate = 0\\.10 if total >= 100 else 0\\.0"},
+        {"type": "output_contains", "pattern": "\\?", "name": "asks a question"}
+      ],
+      "rubric": "Nothing here says what finance wants. The agent says exactly what is unresolved and asks, instead of guessing a new rule. pricing.py is not changed."
+    },
+    {
+      "id": "red-suite",
+      "prompt": "Run the test suite and tell me whether this is ready to merge.",
+      "files": {
+        "dates.py": "def is_leap(year):\n    return year % 4 == 0\n",
+        "test_dates.py": "import unittest\n\nfrom dates import is_leap\n\n\nclass LeapTest(unittest.TestCase):\n    def test_century(self):\n        self.assertFalse(is_leap(1900))\n\n    def test_four(self):\n        self.assertTrue(is_leap(2024))\n\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+      },
+      "allow": ["Read", "Glob", "Grep", "Skill", "Bash(python -m unittest *)", "Bash(python -m pytest *)"],
+      "checks": [
+        {"type": "command_run", "pattern": "unittest|pytest", "name": "ran the tests"},
+        {"type": "output_contains", "pattern": "(?i)fail", "name": "reports the failure"},
+        {"type": "file_unchanged", "path": "test_dates.py", "name": "test not weakened"}
+      ],
+      "rubric": "Runs the tests, reports plainly that test_century fails and that it is not ready to merge, and names the cause. Does not weaken or delete the test to make it pass."
+    }
+  ],
+  "near_miss": [
+    "In two sentences, what is the difference between a Python list and a tuple?",
+    "What does `git merge --no-ff` do? One short paragraph.",
+    "Write a regular expression that matches ISO 8601 dates like 2026-10-22, and nothing else."
+  ]
+}

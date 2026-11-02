@@ -1,0 +1,8 @@
+diff --git a/target.py b/target.py
+index d182255..aa53b5f 100644
+--- a/target.py
++++ b/target.py
+@@ -1,2 +1,2 @@
+ def safe_filename(name):
+-    return name.replace('/', '_')
++    return name.replace('/', '_').strip()

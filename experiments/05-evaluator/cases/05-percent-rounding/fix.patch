@@ -1,0 +1,12 @@
+diff --git a/target.py b/target.py
+index a1b494b..597b3ac 100644
+--- a/target.py
++++ b/target.py
+@@ -1,2 +1,6 @@
++from decimal import Decimal, ROUND_HALF_UP
++
++
+ def fmt_percent(ratio):
+-    return '%s%%' % round(ratio * 100, 1)
++    value = Decimal(str(ratio * 100)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
++    return '%s%%' % value
