@@ -285,6 +285,10 @@ def test_without_dash_b_a_bytecode_prefix_inside_the_repo_is_refused(audited):
     """Startup may already have written there, which no script can undo; the script refuses,
     and its own imports add nothing."""
     repo, env = audited
+    # Coverage's subprocess hook imports these modules at startup, before the script runs, so a
+    # measured child would write their bytecode whatever the script does.
+    env.pop("COVERAGE_PROCESS_CONFIG", None)
+    env.pop("COVERAGE_PROCESS_START", None)
     proc = subprocess.run([sys.executable, str(SCRIPT), str(repo)], env=env,
                           capture_output=True, text=True, encoding="utf-8", errors="replace")
     assert proc.returncode == 2 and "python -B" in proc.stderr, proc.stdout + proc.stderr
