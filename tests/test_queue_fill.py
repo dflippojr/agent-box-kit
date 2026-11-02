@@ -817,3 +817,19 @@ def test_skill_is_vendor_neutral():
             text = path.read_text(encoding="utf-8")
             for name in names:
                 assert not re.search(r"\b%s\b" % name, text), (path, name)
+
+
+@pytest.mark.parametrize("unit", ["-  ", "-   ", "1.  ", "* \t "])
+def test_fence_like_does_not_backtrack_on_a_long_list_marker_line(unit):
+    """`\\s+[\\s>]*` could split each marker's spaces many ways, so one line of about 80 characters
+    took seconds and each few more doubled it. A child process keeps a regression from hanging the
+    suite."""
+    line = unit * 200 + "x"
+    code = ("import sys; sys.path[:0] = %r; import issue_lint; "
+            "assert issue_lint.FENCE_LIKE.match(%r) is None" % (sys.path, line))
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=20)
+
+
+@pytest.mark.parametrize("line", ["```", "- ```", "-  ```", "-   > ~~~", "1.  ```", " > * \t ```"])
+def test_fence_like_still_finds_a_fence_after_markers(line):
+    assert issue_lint.FENCE_LIKE.match(line)
