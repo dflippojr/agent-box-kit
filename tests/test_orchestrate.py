@@ -1411,12 +1411,40 @@ def test_local_mode_owner_key_usage_errors(branch, extra):
     "s.LABEL.match('a' + '_' * 200000)",
     "s.unread_dependencies('Dependencies: ' + 'a' * 200000)",
     "s.unread_dependencies('Dependencies: #1\\n- a' + '_' * 200000)",
+    # The key's start: the leading run and the space after the key's prefix both took spaces,
+    # `*` and `_`, and the value's lazy run retried `[ \t]*$` at every space.
+    "s.read_dependencies('_' * 200000 + 'x')",
+    "s.read_dependencies(' ' * 200000 + 'x')",
+    "s.read_dependencies('_*' * 100000 + 'x')",
+    "s.read_dependencies('+' + ' ' * 200000 + 'x')",
+    "s.read_dependencies('[ ]' + ' ' * 200000 + 'x')",
+    "s.read_dependencies('Dependencies' + ' ' * 200000 + 'x')",
+    "s.read_dependencies('Dependencies: a' + ' ' * 200000 + 'b')",
 ])
 def test_select_patterns_stay_fast_on_hostile_issue_bodies(call):
     code = ("import importlib.util; spec = importlib.util.spec_from_file_location('s', %r); "
             "s = importlib.util.module_from_spec(spec); spec.loader.exec_module(s); %s"
             % (str(SCRIPTS / "select.py"), call))
     subprocess.run([sys.executable, "-c", code], check=True, timeout=5)
+
+
+@pytest.mark.parametrize("body, lines, keys", [
+    ("Dependencies: #1  ", ["#1"], []),
+    ("> - [x] ## **Dependencies**: #2\t", ["#2"], []),
+    ("1. [ ] Dependencies:** _#3_", ["_#3_"], []),
+    ("\ufeff  __Dependencies__ \n- #4\n- #5", ["#4", "#5"], []),
+    ("## Dependencies\n#6\n## Next\n#7", ["#6"], []),
+    ("+ \u00a0Dependencies: #8", ["#8"], []),
+    ("Dependencies:*  ** #10 ", ["** #10"], []),
+    ("#  \t*Dependencies*: none", ["none"], []),
+    ("- [ ]\u00a0Dependencies: #9", [], ["- [ ]\u00a0Dependencies: #9"]),
+    ("Dependencies (blocking): #1", [], ["Dependencies (blocking): #1"]),
+    ("\u2022 Dependency: #2", [], ["\u2022 Dependency: #2"]),
+    ("Dependencies", [], ["Dependencies"]),
+    ("1234567890. Dependencies: #1", [], []),
+])
+def test_dependency_keys_still_read_the_same(body, lines, keys):
+    assert selector.read_dependencies(body) == (lines, keys)
 
 
 @pytest.mark.parametrize("item, end", [

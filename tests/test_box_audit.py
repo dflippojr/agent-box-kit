@@ -2079,12 +2079,28 @@ def test_skill_is_vendor_neutral():
     "'host_reason': 'no host', 'default_branch': 'main'})",
     "collect.proof_rules({'repo': repo, 'files': ['skills/' + 'verif' * 50000], 'links': set()})",
     "collect.ci_config({'repo': repo, 'files': ['.gitlab-ci.yml'], 'links': set()})",
+    "collect.test_inventory({'repo': repo, 'files': ['Dockerfile']})",
+    "collect.test_inventory({'repo': repo, 'files': ['compose.yml']})",
 ])
 def test_collect_patterns_stay_fast_on_hostile_repo_contents(tmp_path, call):
     (tmp_path / ".gitlab-ci.yml").write_text("\n" * 199999 + "x", encoding="utf-8")
+    # `^\s*(?:image:|FROM)` ran across every blank line from every line start, like `^\s*-` above.
+    (tmp_path / "Dockerfile").write_bytes(b"\n" * 199999 + b"x")
+    (tmp_path / "compose.yml").write_bytes(b" \n" * 99999 + b"x")
     code = ("import sys, pathlib; sys.path.insert(0, %r); import collect; repo = pathlib.Path(%r); "
             "%s" % (str(SCRIPTS), str(tmp_path), call))
     subprocess.run([sys.executable, "-c", code], check=True, timeout=5)
+
+
+def test_compose_and_dockerfile_images_are_still_read(tmp_path):
+    (tmp_path / "Dockerfile").write_bytes(b"FROM python:3.12 AS base\n\n\n  from alpine:3\n"
+                                          b"RUN echo FROM nothing\n\tFROM\tbusybox\n")
+    (tmp_path / "compose.yml").write_bytes(b"services:\n  db:\n\n    image: postgres:16\r\n"
+                                           b"    image:\n      redis\n")
+    c = collect.test_inventory({"repo": tmp_path, "files": ["Dockerfile", "compose.yml"]})
+    assert c["data"]["images"] == [
+        ("Dockerfile", "python:3.12"), ("Dockerfile", "alpine:3"), ("Dockerfile", "busybox"),
+        ("compose.yml", "postgres:16"), ("compose.yml", "redis")]
 
 
 @pytest.mark.parametrize("name, ready", [

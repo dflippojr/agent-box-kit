@@ -717,6 +717,49 @@ def test_refine_changes_nothing_when_it_cannot_refine(tmp_path, number, body, me
     assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
 
 
+def link_or_skip(make, target, link):
+    try:
+        make(str(target), str(link))
+    except (OSError, NotImplementedError) as e:
+        pytest.skip("cannot make a link here: %s" % e)
+
+
+# The issue folder is the owner's, but its entries are untrusted: `issues/1.md` may be a link to a
+# file elsewhere. Before the fix, refine followed it and rewrote the outside file.
+@pytest.mark.parametrize("make", [os.symlink, os.link], ids=["symlink", "hard link"])
+def test_refine_never_writes_through_a_linked_issue_file(tmp_path, make):
+    folder = refine_folder(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (folder / "1.md").replace(outside / "1.md")
+    before = (outside / "1.md").read_bytes()
+    link_or_skip(make, outside / "1.md", folder / "1.md")
+    r = refine_cli("apply", 1, write(tmp_path / "new.md", REFINED), "--folder", folder, "--apply")
+    assert r.returncode == 2 and "link" in r.stderr, r.stdout + r.stderr
+    assert "REFINED" not in r.stdout
+    assert (outside / "1.md").read_bytes() == before
+
+
+def test_select_refuses_a_symlinked_issue_file(tmp_path):
+    folder = refine_folder(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (folder / "3.md").replace(outside / "3.md")
+    link_or_skip(os.symlink, outside / "3.md", folder / "3.md")
+    with pytest.raises(select.InputError, match="link"):
+        select.read_folder(folder)
+
+
+def test_refine_keeps_the_issue_file_mode(tmp_path):
+    folder = refine_folder(tmp_path)
+    os.chmod(str(folder / "1.md"), 0o640)
+    mode = os.stat(str(folder / "1.md")).st_mode & 0o777
+    r = refine_cli("apply", 1, write(tmp_path / "new.md", REFINED), "--folder", folder, "--apply")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert os.stat(str(folder / "1.md")).st_mode & 0o777 == mode
+    assert sorted(p.name for p in folder.iterdir()) == ["1.md", "2.md", "3.md"]
+
+
 def host_routes(issue_labels, comments, repo_labels=REPO_LABELS):
     issue = {"number": 7, "title": "Round half up", "state": "open", "body": WAITING,
              "created_at": "2026-09-05T09:00:00Z", "labels": labels(*issue_labels)}

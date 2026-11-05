@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -200,6 +201,57 @@ def test_invalid_config_values_exit_2_not_1(repo, config):
     r = py("secret_guard.py", "--tree", "--dir", str(repo))
     assert r.returncode == 2, r.stdout + r.stderr
     assert "Traceback" not in r.stderr
+
+
+# The repository is untrusted input to the guard. With a one-character extra pattern, a file
+# read through a link would print in full, one character per finding. None of these characters
+# may reach the output: none of them is in "secret_guard: clean".
+CANARY = "QZJ-9047-WVX"
+
+
+def symlink_or_skip(target, link):
+    try:
+        os.symlink(str(target), str(link))
+    except (OSError, NotImplementedError) as e:
+        pytest.skip("cannot make a symlink here: %s" % e)
+
+
+def assert_canary_absent(out):
+    leaked = sorted(set(CANARY) & set(out))
+    assert not leaked, "outside bytes reached the output: %s\n%s" % (leaked, out)
+
+
+@pytest.mark.parametrize("layout", ["tracked link", "folder replaced by a link"])
+def test_tree_scan_never_reads_through_a_link_out_of_the_repo(repo, tmp_path, layout):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "notes.txt").write_bytes((CANARY + "\n").encode())
+    write(repo, ".secret-guard.json", json.dumps({
+        "extra_patterns": [{"label": "char", "regex": "."}],
+        "ignore_paths": ["README.md", ".secret-guard.json"]}))
+    if layout == "tracked link":
+        symlink_or_skip(outside / "notes.txt", repo / "notes.txt")
+        git(repo, "add", "notes.txt")
+    else:
+        write(repo, "d/notes.txt", "")
+        git(repo, "add", "d/notes.txt")
+        (repo / "d" / "notes.txt").unlink()
+        (repo / "d").rmdir()
+        symlink_or_skip(outside, repo / "d")  # the index still lists d/notes.txt
+    git(repo, "add", ".secret-guard.json")
+    r = py("secret_guard.py", "--tree", "--dir", str(repo))
+    assert_canary_absent(r.stdout + r.stderr)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@pytest.mark.parametrize("mode", ["--staged", "--tree"])
+def test_a_linked_config_is_refused_not_read(repo, tmp_path, mode):
+    outside = tmp_path / "outside.json"
+    outside.write_bytes(json.dumps({"extra_patterns": [{"label": CANARY, "regex": "("}]}).encode())
+    symlink_or_skip(outside, repo / ".secret-guard.json")
+    r = py("secret_guard.py", mode, "--dir", str(repo))
+    assert r.returncode == 2 and "link" in r.stderr, r.stdout + r.stderr
+    assert CANARY not in r.stdout + r.stderr
 
 
 def test_not_a_git_repo_is_an_error(tmp_path):
