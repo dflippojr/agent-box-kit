@@ -22,11 +22,16 @@ Design notes
        "ignore_paths": ["tests/fixtures/*"]}
   * A pre-commit hook is a safety net, not enforcement: `git commit --no-verify` skips it.
     Back it with a CI check (run `--tree`) if the repo matters.
+  * The repository is untrusted input. --tree skips a tracked file that is a link, or sits in a
+    folder that is one, and a config that is a link is an error (exit 2): a link can point at a
+    file outside the repo, and a one-character extra pattern would print it in full.
 """
 import argparse
 import fnmatch
 import json
+import os
 import re
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -80,13 +85,65 @@ def die(message):
     sys.exit(2)
 
 
+class Refused(Exception):
+    """A path in the repo that is not read: a link, under a link, not a plain file, too large."""
+
+
+def is_link(st):
+    """A symlink, or on Windows any reparse point (a junction too)."""
+    attrs = getattr(st, "st_file_attributes", 0)
+    return stat.S_ISLNK(st.st_mode) or bool(attrs & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+
+
+NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+WALK_FDS = bool(NOFOLLOW) and hasattr(os, "O_DIRECTORY") and os.open in os.supports_dir_fd
+
+
+def open_inside(root, parts):
+    """Open root/parts... for reading. Where the platform allows, walk the folders by descriptor
+    and refuse links at open, so a path swapped for a link after the checks cannot be followed."""
+    flags = os.O_RDONLY | NOFOLLOW | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+    if not WALK_FDS:
+        return os.open(os.path.join(str(root), *parts), flags)
+    folder = os.open(str(root), os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in parts[:-1]:
+            inner = os.open(part, os.O_RDONLY | os.O_DIRECTORY | NOFOLLOW, dir_fd=folder)
+            os.close(folder)
+            folder = inner
+        return os.open(parts[-1], flags, dir_fd=folder)
+    finally:
+        os.close(folder)
+
+
+def read_inside(root, rel, limit):
+    """The bytes of rel, a `/`-separated path under root. Raises Refused if rel or a folder on
+    the way to it is a link, or rel is not a plain file of at most limit bytes; OSError if it is
+    missing or unreadable."""
+    parts = rel.split("/")
+    path = str(root)
+    for i, part in enumerate(parts):
+        path = os.path.join(path, part)
+        st = os.lstat(path)
+        if is_link(st):
+            raise Refused("%s is a link" % "/".join(parts[:i + 1]))
+    if not stat.S_ISREG(st.st_mode) or st.st_size > limit:
+        raise Refused("%s is not a plain file of at most %d bytes" % (rel, limit))
+    fd = open_inside(root, parts)
+    with os.fdopen(fd, "rb") as f:
+        if not os.path.samestat(st, os.fstat(fd)):
+            raise Refused("%s changed while it was read" % rel)
+        return f.read(limit)
+
+
 def load_config(root):
     cfg = {"extra_patterns": [], "allow_substrings": [], "ignore_paths": []}
-    path = Path(root) / CONFIG_NAME
-    if not path.is_file():
-        return cfg
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(read_inside(root, CONFIG_NAME, MAX_FILE_BYTES).decode("utf-8"))
+    except FileNotFoundError:
+        return cfg
+    except Refused as exc:
+        die("secret_guard: refusing to read %s: %s" % (CONFIG_NAME, exc))
     except (OSError, ValueError) as exc:
         die("secret_guard: cannot read %s: %s" % (CONFIG_NAME, exc))
     if not isinstance(raw, dict):
@@ -176,12 +233,9 @@ def scan_tree(root, cfg):
     for name in proc.stdout.decode("utf-8", "replace").split("\0"):
         if not name or path_ignored(name, cfg):
             continue
-        full = Path(root) / name
         try:
-            if not full.is_file() or full.stat().st_size > MAX_FILE_BYTES:
-                continue
-            data = full.read_bytes()
-        except OSError:
+            data = read_inside(root, name, MAX_FILE_BYTES)
+        except (OSError, Refused):
             continue
         if b"\0" in data[:8000]:
             continue

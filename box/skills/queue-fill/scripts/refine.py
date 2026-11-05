@@ -34,14 +34,20 @@ already exist on the repo.
 Exit codes: 0 listed, dry run printed or the issue rewritten; 1 not refined: the issue is not an
 open `needs-refinement` issue, has no answer, BODY fails the lint, `ready` is missing on the
 repo, or the edit failed; 2 usage, input or host error (bad options, unreadable BODY or issue
-file, gh missing, a refused read).
+file, an issue file that is a link or has other hard links, gh missing, a refused read).
+
+In a folder, the issue file is replaced by a new file, never written through: a file the folder
+links to elsewhere is refused and left as it is.
 """
 import argparse
+import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -64,6 +70,7 @@ class Folder:
 
     def __init__(self, path):
         self.path = Path(path)
+        self.seen = {}  # number -> the issue file's lstat when it was read
 
     def issues(self):
         return [i for i in select.read_folder(self.path) if i["state"] == "OPEN"
@@ -71,8 +78,18 @@ class Folder:
 
     def issue(self, number):
         path = self.path / ("%d.md" % number)
-        if not path.is_file():
+        try:
+            st = os.lstat(str(path))
+        except FileNotFoundError:
             raise select.InputError("%s: no such issue file" % path)
+        if select.linked(st):
+            raise select.InputError("%s: is a link; refine edits only a plain file" % path)
+        if not stat.S_ISREG(st.st_mode):
+            raise select.InputError("%s: no such issue file" % path)
+        if st.st_nlink > 1:
+            raise select.InputError("%s: has other hard links, which an edit would change too"
+                                    % path)
+        self.seen[number] = st
         return select.parse_issue_file(path)
 
     def answers(self, issue):
@@ -83,12 +100,30 @@ class Folder:
         return None  # a folder has no label list
 
     def edit(self, issue, body, labels):
-        path = self.path / ("%d.md" % issue["number"])
+        """Write a new file beside the issue file and move it over the entry, so a link swapped
+        in after the read is replaced, not followed. The entry must still be the file read."""
+        path = str(self.path / ("%d.md" % issue["number"]))
         text = file_issues.issue_file(issue["number"], issue["title"], labels, body,
                                       issue["createdAt"], issue["state"].lower())
         try:
-            with open(str(path), "w", encoding="utf-8", newline="\n") as f:
-                f.write(text)
+            st = os.lstat(path)
+            seen = self.seen.get(issue["number"])
+            if seen is None or not os.path.samestat(st, seen) or select.linked(st) \
+                    or st.st_nlink > 1:
+                return "%s changed after it was read; nothing written" % path
+            fd, tmp = tempfile.mkstemp(dir=str(self.path), prefix=".%d." % issue["number"],
+                                       suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(text)
+                os.chmod(tmp, stat.S_IMODE(st.st_mode))
+                os.replace(tmp, path)
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
         except OSError as e:
             return str(e)
         return None

@@ -136,6 +136,8 @@ folder below.
 
 One file per issue, named `<number>.md`. A header between `---` lines holds one field per line,
 with the same names as the host JSON; the body follows the header.
+Each must be a plain file in the folder: a link is an input error, because it could lead to a
+file elsewhere, and `refine.py` also refuses a file with other hard links.
 
 ```
 ---

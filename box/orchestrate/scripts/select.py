@@ -41,6 +41,7 @@ import json  # noqa: E402
 import re  # noqa: E402
 import shlex  # noqa: E402
 import shutil  # noqa: E402
+import stat  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 # gh's response handling, one implementation for box-audit and orchestrate, loaded by path from
@@ -130,8 +131,16 @@ def read_json(path):
     return [normalize(d, "%s[%d]" % (path, i)) for i, d in enumerate(data)]
 
 
+def linked(st):
+    """A symlink or, on Windows, another reparse point (0x400), such as a junction."""
+    return stat.S_ISLNK(st.st_mode) or bool(getattr(st, "st_file_attributes", 0) & 0x400)
+
+
 def parse_issue_file(path):
-    """An issue file: a header of `key: value` lines between `---` lines, then the body."""
+    """An issue file: a header of `key: value` lines between `---` lines, then the body. A link
+    is refused: the folder's entries are untrusted, and one could lead to any file."""
+    if linked(os.lstat(str(path))):
+        raise InputError("%s: is a link; an issue file must be a plain file" % path.name)
     text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
     m = re.match(r"---\n(.*?)\n---\n?(.*)\Z", text, re.S)
     if not m:
