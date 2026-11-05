@@ -62,14 +62,20 @@ HELD = {  # lifecycle labels that keep a ready issue from dispatch, and why
 PRESENT = "user-present"
 # The key: `Dependencies: <refs>` (also bold, or a list item of any kind `LIST_ITEM` reads), or
 # the key alone on its line as a heading or bold label, with the references on the lines below it.
-# Any space or a byte-order mark may come before it.
-KEY_START = (r"^[\s\ufeff>*_-]*(?:(?:[+\u2022\u2013\u2014]|\d{1,9}[.)])[ \t]+)?(?:\[[ xX]\][ \t]+)?"
-             r"(#*)\s*[*_]*")
-DEPENDENCIES = re.compile(KEY_START + r"Dependencies[*_]*(?::[*_]*[ \t]*(.*?)|[ \t]*)[ \t]*$",
-                          re.I)
+# Any space or a byte-order mark may come before it. `key_start` reads what comes before the
+# word in parts, each matched once and never shortened: no later part can start with a character
+# the part before it takes, so a shorter match never helps, and a long line costs one pass. As
+# one regex, the parts that share spaces, `*` and `_` were retried against each other (over 5 s
+# on a 64 KB line).
+KEY_LEAD = re.compile(r"[\s\ufeff>*_-]*")
+KEY_MARKER = re.compile(r"(?:[+\u2022\u2013\u2014]|\d{1,9}[.)])[ \t]+")
+KEY_BOX = re.compile(r"\[[ xX]\][ \t]+")
+KEY_HASHES = re.compile(r"(#*)\s*[*_]*")
+# After the word: an optional colon and the value, which `dependencies_key` trims.
+KEY_WORD = re.compile(r"Dependencies[*_]*(?::(.*)|[ \t]*)$", re.I)
 # A line that starts like the key but is not one, such as `Dependencies (blocking): #1`,
 # `Dependencies - #1` or `Dependency: #1`. Prose such as `Dependencies are pinned` is not matched.
-OTHER_KEY = re.compile(KEY_START + r"Dependenc(?:y|ies)[*_]*\s*(?:[^\w\s]|$)", re.I)
+OTHER_WORD = re.compile(r"Dependenc(?:y|ies)[*_]*\s*(?:[^\w\s]|$)", re.I)
 # The key in a table row, HTML or code (`| Dependencies | #1 |`, `<b>Dependencies:</b> #1`). It is
 # not read, and holds the issue when its line has a digit; a mention such as `Dependencies: #N` in
 # backticks does not.
@@ -87,6 +93,29 @@ NONE = re.compile(r"[\W_]*none\b", re.I)
 # `owner/name` starts only where a word starts, so a long word is read once, not from each letter.
 REF = re.compile(r"(?:(?<![\w.-])([\w.-]+/[\w.-]+))?#(\d+)\b"
                  r"|https?://[^\s/]+/([\w.-]+/[\w.-]+)/issues/(\d+)\b")
+
+
+def key_start(line):
+    """(hashes, start): a heading key's `#` run ("" if none) and where the key's word may start."""
+    start = KEY_LEAD.match(line).end()
+    for part in (KEY_MARKER, KEY_BOX):
+        m = part.match(line, start)
+        start = m.end() if m else start
+    m = KEY_HASHES.match(line, start)
+    return m.group(1), m.end()
+
+
+def dependencies_key(line):
+    """(hashes, value) for a `Dependencies` key line, else None. The value is the text after the
+    colon without its leading `*`/`_` run and outer spaces and tabs ("" if there is none)."""
+    hashes, start = key_start(line)
+    m = KEY_WORD.match(line, start)
+    return (hashes, (m.group(1) or "").lstrip("*_").strip(" \t")) if m else None
+
+
+def other_key(line):
+    """A line that starts like the key but is not one (`OTHER_WORD`)."""
+    return bool(OTHER_WORD.match(line, key_start(line)[1]))
 
 
 def only_references(text):
@@ -228,7 +257,7 @@ def lines_below(lines, level):
     heading, bold label, or blank line with no list item after it."""
     out = []
     for j, text in enumerate(lines):
-        if DEPENDENCIES.match(text) or OTHER_KEY.match(text):
+        if dependencies_key(text) or other_key(text):
             return out or None
         heading = HEADING.match(text)
         if level:
@@ -294,7 +323,7 @@ def items_below(lines):
             in_paragraph = False
             continue
         item = LIST_ITEM.sub("", text)
-        if DEPENDENCIES.match(text) or OTHER_KEY.match(text) or SECTION_END.match(text):
+        if dependencies_key(text) or other_key(text) or SECTION_END.match(text):
             break
         label = LABEL.match(item)
         if label and not LIST_ITEM.match(text) and REF.search(item):
@@ -336,15 +365,16 @@ def read_dependencies(body):
     lines = (body or "").replace("\r\n", "\n").split("\n")
     out, keys = [], []
     for i, line in enumerate(lines):
-        key = DEPENDENCIES.match(line)
+        key = dependencies_key(line)
         if not key:
-            if OTHER_KEY.match(line) or MARKUP_KEY.match(line) and re.search(r"\d", line):
+            if other_key(line) or MARKUP_KEY.match(line) and re.search(r"\d", line):
                 keys.append(line.strip())
             continue
-        if (key.group(2) or "").strip():
-            below = [key.group(2)] + items_below(lines[i + 1:])
+        hashes, value = key
+        if value.strip():
+            below = [value] + items_below(lines[i + 1:])
         else:
-            below = lines_below(lines[i + 1:], len(key.group(1)))
+            below = lines_below(lines[i + 1:], len(hashes))
             if below == []:
                 keys.append(line.strip())
         below = below or []

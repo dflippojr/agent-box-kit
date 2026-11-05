@@ -898,7 +898,10 @@ def test_inventory(ctx):
         base = f.rsplit("/", 1)[-1].lower()
         if re.match(r"(docker-)?compose[\w.-]*\.ya?ml$", base) or base.startswith("dockerfile"):
             text = read(repo, f) or ""
-            for m in re.finditer(r"^\s*(?:image:|FROM)\s+([\w./:@${}-]+)", text, re.M | re.I):
+            # Indentation stops at the line's end: `^\s*` ran on across every blank line below
+            # each line start, so a file of newlines took quadratic time.
+            for m in re.finditer(r"^[^\S\n]*(?:image:|FROM)\s+([\w./:@${}-]+)", text,
+                                 re.M | re.I):
                 images.append((f, m.group(1)))
     for wf, facts in ctx.get("workflows", {}).items():
         images += [(wf, img) for _, img in facts["images"]]
