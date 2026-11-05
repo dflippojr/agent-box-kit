@@ -72,9 +72,9 @@ select = load_select()
 
 PARTS = ["Problem", "Want", "Constraints", "Dependencies", "Out of scope"]
 KNOWN = card.TIERS | card.REVIEWS | card.OTHER_LABELS | set(select.HELD) | {select.PRESENT, "bug"}
-# The text ends at its last character that is not a space, tab or `#`: one greedy pass, where a
-# lazy `(.*?)` rescanned the rest of the line for each character it took.
-HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+((?:.*[^ \t#])?)[ \t#]*$")
+# Only the marker: headings() strips the closing `#`s in Python. A lazy `(.*?)[ \t#]*$` here
+# rescanned the rest of the line for each character it took.
+HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]")
 # A fence line the lint reads: at column 0, three or more backticks (with no backtick after
 # them) or tildes. A closer has only ASCII spaces or tabs after its run.
 FENCE = re.compile(r"^(`{3,}(?=[^`]*$)|~{3,})(.*)$")
@@ -134,7 +134,8 @@ def headings(body):
     for pos, _, line, fenced, problem in lines(body):
         m = not fenced and not problem and HEADING.match(line)
         if m:
-            found.append([len(m.group(1)), m.group(2).strip(), pos, pos + len(line) + 1])
+            text = line[m.end():].rstrip(" \t#").strip()
+            found.append([len(m.group(1)), text, pos, pos + len(line) + 1])
     out = []
     for i, (level, text, start, after) in enumerate(found):
         end = next((h[2] for h in found[i + 1:] if h[0] <= level), len(body))

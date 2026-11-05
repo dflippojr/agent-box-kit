@@ -2111,9 +2111,9 @@ def test_verify_skill_names_still_match(tmp_path, name, found):
 
 
 def test_other_ci_script_lines_are_still_read(tmp_path):
-    (tmp_path / ".gitlab-ci.yml").write_text(
-        "test:\n  script:\n    - make lint\n\n\t-\tmake test\n  -\n    not an item\n",
-        encoding="utf-8")
+    # Bytes, so Windows does not turn the newlines into CRLF.
+    (tmp_path / ".gitlab-ci.yml").write_bytes(
+        b"test:\n  script:\n    - make lint\n\n\t-\tmake test\n  -\n    not an item\n")
     ctx = {"repo": tmp_path, "files": [".gitlab-ci.yml"], "links": set()}
     lines = [i["claim"] for i in collect.ci_config(ctx)["items"] if ".gitlab-ci.yml" in i["claim"]]
     assert lines == [".gitlab-ci.yml present; script lines: make lint; make test; not an item"]

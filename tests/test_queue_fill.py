@@ -840,15 +840,16 @@ def test_heading_does_not_backtrack_on_a_long_run_of_closing_hashes(line):
     """`(.*?)[ \\t#]*$` rescanned the rest of the line for each character the lazy text took, so
     one heading line of 64 KB took over 5 s. Issue bodies are untrusted."""
     code = ("import sys; sys.path[:0] = %r; import issue_lint; "
-            "assert issue_lint.HEADING.match(%s)" % (sys.path, line))
+            "assert issue_lint.headings(%s)[0][1].endswith('x')" % (sys.path, line))
     subprocess.run([sys.executable, "-c", code], check=True, timeout=5)
 
 
-@pytest.mark.parametrize("line, groups", [
-    ("# Title", ("#", "Title")), ("## Title ##", ("##", "Title")), ("#  a # b #  ", ("#", "a # b")),
-    ("### C# \t#", ("###", "C")), ("# #", ("#", "")), ("#\t", ("#", "")), ("   ###### x", ("######", "x")),
+@pytest.mark.parametrize("line, heading", [
+    ("# Title", (1, "Title")), ("## Title ##", (2, "Title")), ("#  a # b #  ", (1, "a # b")),
+    ("### C# \t#", (3, "C")), ("# #", (1, "")), ("#\t", (1, "")), ("   ###### x", (6, "x")),
     ("    # x", None), ("####### x", None), ("#x", None),
 ])
-def test_heading_still_strips_the_closing_sequence(line, groups):
-    m = issue_lint.HEADING.match(line)
-    assert (m.groups() if m else None) == groups
+def test_heading_still_strips_the_closing_sequence(line, heading):
+    found = [h[:2] for h in issue_lint.headings(line)]
+    assert found == ([heading] if heading else [])
+    assert bool(issue_lint.HEADING.match(line)) == bool(heading)
