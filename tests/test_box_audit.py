@@ -2067,3 +2067,69 @@ def test_skill_is_vendor_neutral():
             text = path.read_text(encoding="utf-8")
             for name in names:
                 assert name not in text, "%s names %s" % (path.name, name)
+
+
+# Tracked file names and CI files come from the audited repo, which is untrusted. Before the fix:
+# `ready([-_.]\w+)*$` could split a run of underscores 2^n ways (45 characters took over 5 s),
+# `^\s*-` ran across every blank line from every line start, and `skills/[\w-]*verif[\w-]*/`
+# retried each `verif` in a long name. A child process with a timeout keeps a regression from
+# hanging the suite.
+@pytest.mark.parametrize("call", [
+    "collect.protection({'repo': repo, 'files': ['ready' + '_' * 60 + '!'], 'host': None, "
+    "'host_reason': 'no host', 'default_branch': 'main'})",
+    "collect.proof_rules({'repo': repo, 'files': ['skills/' + 'verif' * 50000], 'links': set()})",
+    "collect.ci_config({'repo': repo, 'files': ['.gitlab-ci.yml'], 'links': set()})",
+    "collect.test_inventory({'repo': repo, 'files': ['Dockerfile']})",
+    "collect.test_inventory({'repo': repo, 'files': ['compose.yml']})",
+])
+def test_collect_patterns_stay_fast_on_hostile_repo_contents(tmp_path, call):
+    (tmp_path / ".gitlab-ci.yml").write_text("\n" * 199999 + "x", encoding="utf-8")
+    # `^\s*(?:image:|FROM)` ran across every blank line from every line start, like `^\s*-` above.
+    (tmp_path / "Dockerfile").write_bytes(b"\n" * 199999 + b"x")
+    (tmp_path / "compose.yml").write_bytes(b" \n" * 99999 + b"x")
+    code = ("import sys, pathlib; sys.path.insert(0, %r); import collect; repo = pathlib.Path(%r); "
+            "%s" % (str(SCRIPTS), str(tmp_path), call))
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=5)
+
+
+def test_compose_and_dockerfile_images_are_still_read(tmp_path):
+    (tmp_path / "Dockerfile").write_bytes(b"FROM python:3.12 AS base\n\n\n  from alpine:3\n"
+                                          b"RUN echo FROM nothing\n\tFROM\tbusybox\n")
+    (tmp_path / "compose.yml").write_bytes(b"services:\n  db:\n\n    image: postgres:16\r\n"
+                                           b"    image:\n      redis\n")
+    c = collect.test_inventory({"repo": tmp_path, "files": ["Dockerfile", "compose.yml"]})
+    assert c["data"]["images"] == [
+        ("Dockerfile", "python:3.12"), ("Dockerfile", "alpine:3"), ("Dockerfile", "busybox"),
+        ("compose.yml", "postgres:16"), ("compose.yml", "redis")]
+
+
+@pytest.mark.parametrize("name, ready", [
+    ("ready", True), ("scripts/ready", True), ("scripts/ready.sh", True), ("ready_ci.py", True),
+    ("ready-ci_x.py", True), ("ready__a", True), ("ready.a-b_c.d", True), ("ready_", False),
+    ("ready.", False), ("ready-", False), ("ready.-a", False), ("ready.a!", False),
+    ("already.sh", False), ("ready/x", False),
+])
+def test_ready_script_names_still_match(tmp_path, name, ready):
+    ctx = {"repo": tmp_path, "files": [name], "host": None, "host_reason": "no host",
+           "default_branch": "main"}
+    assert collect.protection(ctx)["data"]["ready_scripts"] == ([name] if ready else [])
+
+
+@pytest.mark.parametrize("name, found", [
+    ("skills/verify/SKILL.md", True), ("box/skills/ui-verification/SKILL.md", True),
+    ("skills/Verify-ui/run.sh", True), ("skills/verify", False), ("skills/x/verify.txt", False),
+    ("myskills/verify/SKILL.md", False), ("docs/ui-testing.md", True), ("scripts/verify.sh", True),
+    ("verify-ui.py", True), ("scripts/verify.txt", False),
+])
+def test_verify_skill_names_still_match(tmp_path, name, found):
+    ctx = {"repo": tmp_path, "files": [name], "links": set()}
+    assert collect.proof_rules(ctx)["data"]["verify"] == ([name] if found else [])
+
+
+def test_other_ci_script_lines_are_still_read(tmp_path):
+    # Bytes, so Windows does not turn the newlines into CRLF.
+    (tmp_path / ".gitlab-ci.yml").write_bytes(
+        b"test:\n  script:\n    - make lint\n\n\t-\tmake test\n  -\n    not an item\n")
+    ctx = {"repo": tmp_path, "files": [".gitlab-ci.yml"], "links": set()}
+    lines = [i["claim"] for i in collect.ci_config(ctx)["items"] if ".gitlab-ci.yml" in i["claim"]]
+    assert lines == [".gitlab-ci.yml present; script lines: make lint; make test; not an item"]

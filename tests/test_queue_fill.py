@@ -653,6 +653,12 @@ REFINED = GOOD.replace("Dependencies: #3, #4", "Dependencies: none") + "\n## Dec
 WAITING = GOOD + QUESTION
 
 
+# Windows has no descriptor-relative writes, so refine refuses to write into a folder there
+# (test_refine_refuses_folder_writes_where_it_cannot_anchor_them); tests of a write skip.
+needs_safe_writes = pytest.mark.skipif(
+    not refine.SAFE_WRITES, reason="refine refuses folder writes where it cannot anchor them")
+
+
 def refine_folder(tmp_path):
     folder = tmp_path / "issues"
     folder.mkdir()
@@ -676,6 +682,7 @@ def test_refine_lists_answered_issues_first(tmp_path):
     assert "#2     Not answered" in waiting and "#3" not in r.stdout
 
 
+@needs_safe_writes
 def test_refine_makes_an_answered_issue_ready(tmp_path):
     folder = refine_folder(tmp_path)
     body = write(tmp_path / "new.md", REFINED)
@@ -693,6 +700,7 @@ def test_refine_makes_an_answered_issue_ready(tmp_path):
     assert 1 in {i["number"] for i in plan["dispatch"]}
 
 
+@needs_safe_writes
 def test_refine_keeps_needs_refinement_while_a_question_is_open(tmp_path):
     folder = refine_folder(tmp_path)
     body = write(tmp_path / "new.md", REFINED + "\n## Open question\nWhich rounding mode?\n")
@@ -714,6 +722,220 @@ def test_refine_changes_nothing_when_it_cannot_refine(tmp_path, number, body, me
     r = refine_cli("apply", number, write(tmp_path / "new.md", body), "--folder", folder,
                    "--apply")
     assert r.returncode == 1 and message in r.stdout, r.stdout + r.stderr
+    assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
+
+
+def link_or_skip(make, target, link):
+    try:
+        make(str(target), str(link))
+    except (OSError, NotImplementedError) as e:
+        pytest.skip("cannot make a link here: %s" % e)
+
+
+# The issue folder is the owner's, but its entries are untrusted: `issues/1.md` may be a link to a
+# file elsewhere. Before the fix, refine followed it and rewrote the outside file.
+@pytest.mark.parametrize("make", [os.symlink, os.link], ids=["symlink", "hard link"])
+def test_refine_never_writes_through_a_linked_issue_file(tmp_path, make):
+    folder = refine_folder(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (folder / "1.md").replace(outside / "1.md")
+    before = (outside / "1.md").read_bytes()
+    link_or_skip(make, outside / "1.md", folder / "1.md")
+    r = refine_cli("apply", 1, write(tmp_path / "new.md", REFINED), "--folder", folder, "--apply")
+    assert r.returncode == 2 and "link" in r.stderr, r.stdout + r.stderr
+    assert "REFINED" not in r.stdout
+    assert (outside / "1.md").read_bytes() == before
+
+
+def test_select_refuses_a_symlinked_issue_file(tmp_path):
+    folder = refine_folder(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (folder / "3.md").replace(outside / "3.md")
+    link_or_skip(os.symlink, outside / "3.md", folder / "3.md")
+    with pytest.raises(select.InputError, match="link"):
+        select.read_folder(folder)
+
+
+@needs_safe_writes
+def test_refine_keeps_the_issue_file_mode(tmp_path):
+    folder = refine_folder(tmp_path)
+    os.chmod(str(folder / "1.md"), 0o640)
+    mode = os.stat(str(folder / "1.md")).st_mode & 0o777
+    r = refine_cli("apply", 1, write(tmp_path / "new.md", REFINED), "--folder", folder, "--apply")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert os.stat(str(folder / "1.md")).st_mode & 0o777 == mode
+    assert sorted(p.name for p in folder.iterdir()) == ["1.md", "2.md", "3.md"]
+
+
+# ----- races: an entry swapped for a link between a check and the open or write ----------------
+# Each test swaps the entry at the exact step, from a hook on the call the code makes there, so
+# the interleaving is deterministic: no threads, no timing loops.
+
+def dir_link_or_skip(target, link):
+    """A link to a folder: a symlink, or on Windows a junction, which needs no privilege."""
+    if os.name == "nt":
+        import _winapi
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link_or_skip(os.symlink, target, link)
+
+
+def is_entry(path, folder, name=None):
+    """Whether a path argument (with or without a dir_fd) names folder/name."""
+    want = os.path.normcase(os.path.abspath(str(folder / name) if name else str(folder)))
+    return os.path.normcase(os.path.abspath(str(path))) == want
+
+
+def swap_once(swap):
+    done = []
+
+    def run():
+        if not done:
+            done.append(True)
+            swap()
+    return run
+
+
+def outside_issue(tmp_path, number):
+    outside = tmp_path / "outside"
+    outside.mkdir(exist_ok=True)
+    folder_issue(outside, number, "QZJ-9047-WVX outside title", ["tier:standard", "ready"],
+                 GOOD + "\n## Owner answer\nQZJ-9047-WVX outside answer.\n")
+    path = outside / ("%d.md" % number)
+    os.chmod(str(path), 0o600)
+    return path
+
+
+def outside_state(path):
+    return {p.name: (p.read_bytes(), os.stat(str(p)).st_mode) for p in path.parent.iterdir()}
+
+
+def test_select_never_reads_an_issue_file_swapped_for_a_link_after_its_check(tmp_path,
+                                                                            monkeypatch):
+    folder = refine_folder(tmp_path)
+    outside = outside_issue(tmp_path, 3)
+    swap = swap_once(lambda: ((folder / "3.md").unlink(),
+                              link_or_skip(os.symlink, outside, folder / "3.md")))
+    real_lstat, real_open = os.lstat, os.open
+
+    def lstat(path, *a, **kw):
+        st = real_lstat(path, *a, **kw)
+        if is_entry(path, folder, "3.md"):
+            swap()  # checked: a plain file; now it is a link
+        return st
+
+    def open_(path, flags, *a, dir_fd=None, **kw):
+        if (path == "3.md" and dir_fd is not None) or is_entry(path, folder, "3.md"):
+            swap()
+        return real_open(path, flags, *a, dir_fd=dir_fd, **kw)
+
+    monkeypatch.setattr(os, "lstat", lstat)
+    monkeypatch.setattr(os, "open", open_)
+    with pytest.raises(select.InputError, match="link") as e:
+        issues = select.read_folder(folder)
+        assert "QZJ" not in repr(issues)
+    assert "QZJ" not in str(e.value)
+
+
+def test_select_refuses_an_issue_file_with_other_hard_links(tmp_path):
+    folder = refine_folder(tmp_path)
+    outside = outside_issue(tmp_path, 3)
+    (folder / "3.md").unlink()
+    link_or_skip(os.link, outside, folder / "3.md")
+    with pytest.raises(select.InputError, match="hard links"):
+        select.read_folder(folder)
+
+
+def refine_in_process(capsys, folder, body, *extra):
+    code = refine.main(["apply", "1", str(body), "--folder", str(folder), "--apply"]
+                       + list(extra))
+    out = capsys.readouterr()
+    return code, out.out + out.err
+
+
+@needs_safe_writes
+def test_refine_writes_only_into_the_folder_it_read(tmp_path, monkeypatch, capsys):
+    """The folder is replaced by a link to another folder after refine checks the issue file
+    and before it writes. The write must still land in the folder it read."""
+    folder = refine_folder(tmp_path)
+    outside = outside_issue(tmp_path, 1)
+    before = outside_state(outside)
+    body = write(tmp_path / "new.md", REFINED)
+    moved = tmp_path / "moved"
+    swap = swap_once(lambda: (folder.rename(moved), dir_link_or_skip(outside.parent, folder)))
+    real_samestat = os.path.samestat
+
+    def samestat(a, b):
+        same = real_samestat(a, b)
+        swap()  # after the identity check, before the temp file and the move
+        return same
+
+    monkeypatch.setattr(os.path, "samestat", samestat)
+    code, out = refine_in_process(capsys, folder, body)
+    assert outside_state(outside) == before, out
+    assert code == 0 and "REFINED #1" in out, out
+    assert select.parse_issue_file(moved / "1.md")["body"] == REFINED
+
+
+def test_refine_refuses_a_folder_reached_through_a_link(tmp_path, capsys):
+    real = tmp_path / "elsewhere"
+    real.mkdir()
+    outside = outside_issue(tmp_path, 1)
+    before = outside_state(outside)
+    dir_link_or_skip(outside.parent, real / "issues")
+    body = write(tmp_path / "new.md", REFINED)
+    code, out = refine_in_process(capsys, real / "issues", body)
+    assert code == 2 and "link" in out, out
+    assert outside_state(outside) == before
+
+
+@needs_safe_writes
+def test_refine_never_follows_a_swapped_temp_file(tmp_path, monkeypatch, capsys):
+    """The new file is swapped for a link to an outside file after it is written and before it
+    is moved over the issue file: no outside mode may change, and refine must not report
+    success with a link as the issue file."""
+    folder = refine_folder(tmp_path)
+    outside = outside_issue(tmp_path, 7)
+    before = outside_state(outside)
+    body = write(tmp_path / "new.md", REFINED)
+
+    def swap_temp(path, dir_fd=None):
+        if os.path.basename(str(path)) == "1.md":
+            return
+        os.unlink(path, dir_fd=dir_fd)
+        os.symlink(str(outside), path, dir_fd=dir_fd)
+
+    real_chmod, real_replace = os.chmod, os.replace
+    swapped = []
+
+    def chmod(path, mode, *a, **kw):
+        if not swapped and str(path).endswith(".tmp"):
+            swapped.append(path)
+            swap_temp(path, kw.get("dir_fd"))
+        return real_chmod(path, mode, *a, **kw)
+
+    def replace(src, dst, *a, src_dir_fd=None, dst_dir_fd=None, **kw):
+        if not swapped:
+            swapped.append(src)
+            swap_temp(src, src_dir_fd)
+        return real_replace(src, dst, *a, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd, **kw)
+
+    monkeypatch.setattr(os, "chmod", chmod)
+    monkeypatch.setattr(os, "replace", replace)
+    code, out = refine_in_process(capsys, folder, body)
+    assert swapped, "the hook never ran"
+    assert outside_state(outside) == before, out
+    assert code == 1 and "REFINED" not in out, out
+
+
+def test_refine_refuses_folder_writes_where_it_cannot_anchor_them(tmp_path, monkeypatch, capsys):
+    folder = refine_folder(tmp_path)
+    before = {p.name: p.read_bytes() for p in folder.iterdir()}
+    monkeypatch.setattr(refine, "SAFE_WRITES", False, raising=False)
+    code, out = refine_in_process(capsys, folder, write(tmp_path / "new.md", REFINED))
+    assert code == 1 and "REFINED" not in out and "cannot" in out, out
     assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
 
 
@@ -833,3 +1055,107 @@ def test_fence_like_does_not_backtrack_on_a_long_list_marker_line(unit):
 @pytest.mark.parametrize("line", ["```", "- ```", "-  ```", "-   > ~~~", "1.  ```", " > * \t ```"])
 def test_fence_like_still_finds_a_fence_after_markers(line):
     assert issue_lint.FENCE_LIKE.match(line)
+
+
+@pytest.mark.parametrize("line", ["'# ' + '#' * 200000 + 'x'", "'# ' + ' #\\t' * 70000 + 'x'"])
+def test_heading_does_not_backtrack_on_a_long_run_of_closing_hashes(line):
+    """`(.*?)[ \\t#]*$` rescanned the rest of the line for each character the lazy text took, so
+    one heading line of 64 KB took over 5 s. Issue bodies are untrusted."""
+    code = ("import sys; sys.path[:0] = %r; import issue_lint; "
+            "assert issue_lint.headings(%s)[0][1].endswith('x')" % (sys.path, line))
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=5)
+
+
+@pytest.mark.parametrize("line, heading", [
+    ("# Title", (1, "Title")), ("## Title ##", (2, "Title")), ("#  a # b #  ", (1, "a # b")),
+    ("### C# \t#", (3, "C")), ("# #", (1, "")), ("#\t", (1, "")), ("   ###### x", (6, "x")),
+    ("    # x", None), ("####### x", None), ("#x", None),
+])
+def test_heading_still_strips_the_closing_sequence(line, heading):
+    found = [h[:2] for h in issue_lint.headings(line)]
+    assert found == ([heading] if heading else [])
+    assert bool(issue_lint.HEADING.match(line)) == bool(heading)
+
+
+@pytest.fixture
+def by_path(monkeypatch):
+    """IssueDir as it runs on Windows: entries opened by path, then refused unless the handle is
+    where the path says. /proc/self/fd stands in for GetFinalPathNameByHandleW."""
+    if not os.path.isdir("/proc/self/fd"):
+        pytest.skip("no /proc/self/fd to stand in for a handle's path")
+    monkeypatch.setattr(select, "DIR_FDS", False)
+    monkeypatch.setattr(select, "handle_path", lambda fd: os.readlink("/proc/self/fd/%d" % fd))
+    return monkeypatch
+
+
+def test_issue_dir_by_path_reads_plain_files_and_refuses_links(tmp_path, by_path):
+    folder = refine_folder(tmp_path)
+    assert sorted(i["number"] for i in select.read_folder(folder)) == [1, 2, 3]
+    dir_link_or_skip(folder, tmp_path / "via")
+    with pytest.raises(select.InputError, match="passes through a link"):
+        select.read_folder(tmp_path / "via")
+    with pytest.raises(select.InputError, match="not a folder"):
+        select.read_folder(tmp_path / "nope")
+    outside = outside_issue(tmp_path, 3)
+    (folder / "3.md").unlink()
+    link_or_skip(os.symlink, outside, folder / "3.md")
+    with pytest.raises(select.InputError, match="link") as e:
+        select.read_folder(folder)
+    assert "QZJ" not in str(e.value)
+
+
+def test_issue_dir_by_path_never_reads_a_file_swapped_after_its_check(tmp_path, by_path):
+    folder = refine_folder(tmp_path)
+    outside = outside_issue(tmp_path, 3)
+    swap = swap_once(lambda: ((folder / "3.md").unlink(),
+                              link_or_skip(os.symlink, outside, folder / "3.md")))
+    real_open = os.open
+
+    def open_(path, flags, *a, **kw):
+        if is_entry(path, folder, "3.md"):
+            swap()  # IssueDir checked nothing yet: the handle check must catch it
+        return real_open(path, flags, *a, **kw)
+
+    by_path.setattr(os, "open", open_)
+    with pytest.raises(select.InputError, match="link") as e:
+        select.read_folder(folder)
+    assert "QZJ" not in str(e.value)
+
+
+def test_issue_dir_refuses_to_read_where_it_cannot_tell_where_a_file_is(tmp_path, by_path):
+    folder = refine_folder(tmp_path)
+    by_path.setattr(select, "handle_path", lambda fd: None)
+    with pytest.raises(select.InputError, match="cannot open a file without following links"):
+        select.read_folder(folder)
+
+
+@pytest.mark.parametrize("make, message", [
+    (lambda p: p.mkdir(), "not a plain file|Permission denied"),  # Windows cannot open a folder
+    (lambda p: p.write_bytes(b"---\ntitle: \xff\n---\n"), "utf-8"),
+])
+def test_issue_dir_refuses_entries_that_are_not_issue_files(tmp_path, make, message):
+    folder = refine_folder(tmp_path)
+    make(folder / "4.md")
+    with pytest.raises(select.InputError, match=message):
+        select.read_folder(folder)
+
+
+def test_refine_reports_a_missing_issue_file(tmp_path, capsys):
+    folder = refine_folder(tmp_path)
+    code = refine.main(["apply", "9", str(write(tmp_path / "new.md", REFINED)), "--folder",
+                        str(folder)])
+    assert code == 2 and "9.md" in capsys.readouterr().err
+
+
+@needs_safe_writes
+def test_refine_leaves_no_temp_file_when_a_write_step_fails(tmp_path, monkeypatch, capsys):
+    folder = refine_folder(tmp_path)
+    before = {p.name: p.read_bytes() for p in folder.iterdir()}
+
+    def fchmod(fd, mode):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(os, "fchmod", fchmod)
+    code, out = refine_in_process(capsys, folder, write(tmp_path / "new.md", REFINED))
+    assert code == 1 and "No space left" in out, out
+    assert {p.name: p.read_bytes() for p in folder.iterdir()} == before

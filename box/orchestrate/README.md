@@ -136,6 +136,11 @@ folder below.
 
 One file per issue, named `<number>.md`. A header between `---` lines holds one field per line,
 with the same names as the host JSON; the body follows the header.
+Each must be a plain file in the folder with no other hard links: a link is an input error,
+because it could lead to a file elsewhere, and so is a folder reached through a link. Files are
+opened relative to the folder as first opened, so an entry swapped for a link after a check is
+not followed. `refine.py` writes into a folder only where the platform can do that relative to
+the folder (not on Windows).
 
 ```
 ---

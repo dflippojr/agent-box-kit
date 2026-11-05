@@ -466,7 +466,7 @@ def ci_config(ctx):
     for name in OTHER_CI:
         if name in ctx["files"]:
             text = read(repo, name) or ""
-            scripts = re.findall(r"^\s*-\s+(.+)$", text, re.M)[:15]
+            scripts = re.findall(r"^[ \t]*-\s+(.+)$", text, re.M)[:15]
             data["other_ci"].append(name)
             items.append(item("%s present; script lines: %s" % (name, "; ".join(scripts)[:600]),
                               name))
@@ -590,9 +590,9 @@ def summarize_runs(runs, default_branch):
 
 
 def protection(ctx):
-    items, data = [], {"ready_scripts": [f for f in ctx["files"]
-                                         if re.search(r"(^|/)ready([-_.]\w+)*$|(^|/)ready\.\w+$",
-                                                      f)]}
+    # `_` is both a separator and a word character, so only `-` and `.` may start a later part.
+    ready = r"(^|/)ready(?:[-_.]\w+(?:[-.]\w+)*)?$|(^|/)ready\.\w+$"
+    items, data = [], {"ready_scripts": [f for f in ctx["files"] if re.search(ready, f)]}
     for f in data["ready_scripts"]:
         items.append(item("ready script present: %s" % f, f))
     for f in ctx["files"]:
@@ -898,7 +898,10 @@ def test_inventory(ctx):
         base = f.rsplit("/", 1)[-1].lower()
         if re.match(r"(docker-)?compose[\w.-]*\.ya?ml$", base) or base.startswith("dockerfile"):
             text = read(repo, f) or ""
-            for m in re.finditer(r"^\s*(?:image:|FROM)\s+([\w./:@${}-]+)", text, re.M | re.I):
+            # Indentation stops at the line's end: `^\s*` ran on across every blank line below
+            # each line start, so a file of newlines took quadratic time.
+            for m in re.finditer(r"^[^\S\n]*(?:image:|FROM)\s+([\w./:@${}-]+)", text,
+                                 re.M | re.I):
                 images.append((f, m.group(1)))
     for wf, facts in ctx.get("workflows", {}).items():
         images += [(wf, img) for _, img in facts["images"]]
@@ -973,8 +976,9 @@ def proof_rules(ctx):
             items.append(item("AGENTS.md has no section on proof, verification or evidence",
                               agents))
     skills = [f for f in ctx["files"] if re.search(
-        r"(^|/)skills/[\w-]*verif[\w-]*/|docs/ui-testing\.md$|(^|/)verify[\w-]*\.(md|sh|py|ps1)$",
-        f, re.I)]
+        # The lookahead finds the folder's closing `/` once, so `verif` is not retried to the end.
+        r"(^|/)skills/(?=[\w-]*/)[\w-]*verif"
+        r"|docs/ui-testing\.md$|(^|/)verify[\w-]*\.(md|sh|py|ps1)$", f, re.I)]
     data["verify"] = skills
     items.append(item("verify skill or UI-testing contract: %s" % (", ".join(skills[:8]) or
                                                                    "none found"), "git ls-files",

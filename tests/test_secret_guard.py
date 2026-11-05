@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -201,6 +202,135 @@ def test_invalid_config_values_exit_2_not_1(repo, config):
     assert r.returncode == 2, r.stdout + r.stderr
     assert "Traceback" not in r.stderr
 
+
+# The repository is untrusted input to the guard. With a one-character extra pattern, a file
+# read through a link would print in full, one character per finding. None of these characters
+# may reach the output: none of them is in "secret_guard: clean".
+CANARY = "QZJ-9047-WVX"
+
+
+def symlink_or_skip(target, link):
+    try:
+        os.symlink(str(target), str(link))
+    except (OSError, NotImplementedError) as e:
+        pytest.skip("cannot make a symlink here: %s" % e)
+
+
+def assert_canary_absent(out):
+    leaked = sorted(set(CANARY) & set(out))
+    assert not leaked, "outside bytes reached the output: %s\n%s" % (leaked, out)
+
+
+@pytest.mark.parametrize("layout", ["tracked link", "folder replaced by a link"])
+def test_tree_scan_never_reads_through_a_link_out_of_the_repo(repo, tmp_path, layout):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "notes.txt").write_bytes((CANARY + "\n").encode())
+    write(repo, ".secret-guard.json", json.dumps({
+        "extra_patterns": [{"label": "char", "regex": "."}],
+        "ignore_paths": ["README.md", ".secret-guard.json"]}))
+    if layout == "tracked link":
+        symlink_or_skip(outside / "notes.txt", repo / "notes.txt")
+        git(repo, "add", "notes.txt")
+    else:
+        write(repo, "d/notes.txt", "")
+        git(repo, "add", "d/notes.txt")
+        (repo / "d" / "notes.txt").unlink()
+        (repo / "d").rmdir()
+        symlink_or_skip(outside, repo / "d")  # the index still lists d/notes.txt
+    git(repo, "add", ".secret-guard.json")
+    r = py("secret_guard.py", "--tree", "--dir", str(repo))
+    assert_canary_absent(r.stdout + r.stderr)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@pytest.mark.parametrize("mode", ["--staged", "--tree"])
+def test_a_linked_config_is_refused_not_read(repo, tmp_path, mode):
+    outside = tmp_path / "outside.json"
+    outside.write_bytes(json.dumps({"extra_patterns": [{"label": CANARY, "regex": "("}]}).encode())
+    symlink_or_skip(outside, repo / ".secret-guard.json")
+    r = py("secret_guard.py", mode, "--dir", str(repo))
+    assert r.returncode == 2 and "link" in r.stderr, r.stdout + r.stderr
+    assert CANARY not in r.stdout + r.stderr
+
+
+# A folder swapped for a link after the guard checked it, before it opens the file inside: the
+# check must not be the only defence. The hook runs right after the guard's lstat of the folder.
+def secret_guard_module():
+    import sys
+    from conftest import SCRIPTS
+    if str(SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(SCRIPTS))
+    import secret_guard
+    return secret_guard
+
+
+def dir_link_or_skip(target, link):
+    if os.name == "nt":
+        import _winapi
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        symlink_or_skip(target, link)
+
+
+def proc_fd_path(fd):
+    return os.readlink("/proc/self/fd/%d" % fd)
+
+
+@pytest.mark.parametrize("opener", ["native", "fallback that can name a handle's path",
+                                    "fallback that cannot"])
+def test_tree_read_never_follows_a_folder_swapped_after_its_check(repo, tmp_path, monkeypatch,
+                                                                  opener):
+    sg = secret_guard_module()
+    if opener == "fallback that can name a handle's path":
+        if not os.path.isdir("/proc/self/fd"):
+            pytest.skip("no /proc/self/fd to stand in for a handle's path")
+        monkeypatch.setattr(sg, "WALK_FDS", False)
+        monkeypatch.setattr(sg, "handle_path", proc_fd_path, raising=False)
+    elif opener == "fallback that cannot":
+        monkeypatch.setattr(sg, "WALK_FDS", False)
+        monkeypatch.setattr(sg, "handle_path", lambda fd: None, raising=False)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "notes.txt").write_bytes((CANARY + "\n").encode())
+    write(repo, "d/notes.txt", "inside\n")
+    folder = repo / "d"
+    root = sg.Path(str(repo)).resolve()
+    real_lstat, done = os.lstat, []
+
+    def lstat(path, *a, **kw):
+        st = real_lstat(path, *a, **kw)
+        if not done and os.path.normcase(str(path)) == os.path.normcase(str(root / "d")):
+            done.append(True)
+            folder.rename(tmp_path / "moved")
+            dir_link_or_skip(outside, folder)
+        return st
+
+    monkeypatch.setattr(os, "lstat", lstat)
+    try:
+        data = sg.read_inside(root, "d/notes.txt", sg.MAX_FILE_BYTES)
+    except SystemExit as e:
+        assert opener == "fallback that cannot" and e.code == 2
+        data = b""
+    except (OSError, sg.Refused):
+        data = b""
+    assert done, "the hook never ran"
+    assert_canary_absent(data.decode("utf-8", "replace"))
+    assert opener != "fallback that cannot" or not data
+
+
+
+@pytest.mark.parametrize("by_path", [False, True], ids=["native", "fallback"])
+def test_read_inside_reads_a_plain_file_in_a_folder(repo, monkeypatch, by_path):
+    sg = secret_guard_module()
+    if by_path:
+        if not os.path.isdir("/proc/self/fd"):
+            pytest.skip("no /proc/self/fd to stand in for a handle's path")
+        monkeypatch.setattr(sg, "WALK_FDS", False)
+        monkeypatch.setattr(sg, "handle_path", proc_fd_path)
+    write(repo, "d/e/notes.txt", "inside\n")
+    root = sg.Path(str(repo)).resolve()
+    assert sg.read_inside(root, "d/e/notes.txt", sg.MAX_FILE_BYTES) == b"inside\n"
 
 def test_not_a_git_repo_is_an_error(tmp_path):
     r = py("secret_guard.py", "--staged", "--dir", str(tmp_path))
