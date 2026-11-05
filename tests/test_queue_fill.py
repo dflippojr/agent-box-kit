@@ -1130,7 +1130,7 @@ def test_issue_dir_refuses_to_read_where_it_cannot_tell_where_a_file_is(tmp_path
 
 
 @pytest.mark.parametrize("make, message", [
-    (lambda p: p.mkdir(), "not a plain file"),
+    (lambda p: p.mkdir(), "not a plain file|Permission denied"),  # Windows cannot open a folder
     (lambda p: p.write_bytes(b"---\ntitle: \xff\n---\n"), "utf-8"),
 ])
 def test_issue_dir_refuses_entries_that_are_not_issue_files(tmp_path, make, message):
