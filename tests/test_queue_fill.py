@@ -653,6 +653,12 @@ REFINED = GOOD.replace("Dependencies: #3, #4", "Dependencies: none") + "\n## Dec
 WAITING = GOOD + QUESTION
 
 
+# Windows has no descriptor-relative writes, so refine refuses to write into a folder there
+# (test_refine_refuses_folder_writes_where_it_cannot_anchor_them); tests of a write skip.
+needs_safe_writes = pytest.mark.skipif(
+    not refine.SAFE_WRITES, reason="refine refuses folder writes where it cannot anchor them")
+
+
 def refine_folder(tmp_path):
     folder = tmp_path / "issues"
     folder.mkdir()
@@ -676,6 +682,7 @@ def test_refine_lists_answered_issues_first(tmp_path):
     assert "#2     Not answered" in waiting and "#3" not in r.stdout
 
 
+@needs_safe_writes
 def test_refine_makes_an_answered_issue_ready(tmp_path):
     folder = refine_folder(tmp_path)
     body = write(tmp_path / "new.md", REFINED)
@@ -693,6 +700,7 @@ def test_refine_makes_an_answered_issue_ready(tmp_path):
     assert 1 in {i["number"] for i in plan["dispatch"]}
 
 
+@needs_safe_writes
 def test_refine_keeps_needs_refinement_while_a_question_is_open(tmp_path):
     folder = refine_folder(tmp_path)
     body = write(tmp_path / "new.md", REFINED + "\n## Open question\nWhich rounding mode?\n")
@@ -750,6 +758,7 @@ def test_select_refuses_a_symlinked_issue_file(tmp_path):
         select.read_folder(folder)
 
 
+@needs_safe_writes
 def test_refine_keeps_the_issue_file_mode(tmp_path):
     folder = refine_folder(tmp_path)
     os.chmod(str(folder / "1.md"), 0o640)
@@ -839,11 +848,6 @@ def test_select_refuses_an_issue_file_with_other_hard_links(tmp_path):
         select.read_folder(folder)
 
 
-SAFE_WRITES = getattr(refine, "SAFE_WRITES", True)
-needs_safe_writes = pytest.mark.skipif(
-    not SAFE_WRITES, reason="refine refuses folder writes where it cannot anchor them")
-
-
 def refine_in_process(capsys, folder, body, *extra):
     code = refine.main(["apply", "1", str(body), "--folder", str(folder), "--apply"]
                        + list(extra))
@@ -875,7 +879,6 @@ def test_refine_writes_only_into_the_folder_it_read(tmp_path, monkeypatch, capsy
     assert select.parse_issue_file(moved / "1.md")["body"] == REFINED
 
 
-@needs_safe_writes
 def test_refine_refuses_a_folder_reached_through_a_link(tmp_path, capsys):
     real = tmp_path / "elsewhere"
     real.mkdir()
