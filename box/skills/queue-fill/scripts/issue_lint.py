@@ -72,7 +72,9 @@ select = load_select()
 
 PARTS = ["Problem", "Want", "Constraints", "Dependencies", "Out of scope"]
 KNOWN = card.TIERS | card.REVIEWS | card.OTHER_LABELS | set(select.HELD) | {select.PRESENT, "bug"}
-HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.*?)[ \t#]*$")
+# The text ends at its last character that is not a space, tab or `#`: one greedy pass, where a
+# lazy `(.*?)` rescanned the rest of the line for each character it took.
+HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+((?:.*[^ \t#])?)[ \t#]*$")
 # A fence line the lint reads: at column 0, three or more backticks (with no backtick after
 # them) or tildes. A closer has only ASCII spaces or tabs after its run.
 FENCE = re.compile(r"^(`{3,}(?=[^`]*$)|~{3,})(.*)$")

@@ -79,10 +79,13 @@ HEADING = re.compile(r"^[ \t]{0,3}(#{1,6})(?:[ \t]|$)")
 SECTION_END = re.compile(HEADING.pattern + r"|^[ \t]*(\*\*|__)[^\W\d_][^#/*_]*\2:?[ \t]*$")
 LIST_ITEM = re.compile(r"^[ \t>]*(?:[-*+\u2022\u2013\u2014]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?")
 # A list item that starts another key, such as `- Tier: standard` (not a link's `https:`)
-LABEL = re.compile(r"[*_]*[^\W\d_][\w \t()/-]*?[*_]*:(?!//)")
+# A trailing `*` run may follow the label's words; a `_` there is already one of them.
+LABEL = re.compile(r"[*_]*[^\W\d_][\w \t()/-]*(?:\*[*_]*)?:(?!//)")
 NONE = re.compile(r"[\W_]*none\b", re.I)
 # `#12`, `owner/name#12`, or an issue link as the host pastes it (https://host/owner/name/issues/12)
-REF = re.compile(r"([\w.-]+/[\w.-]+)?#(\d+)\b|https?://[^\s/]+/([\w.-]+/[\w.-]+)/issues/(\d+)\b")
+# `owner/name` starts only where a word starts, so a long word is read once, not from each letter.
+REF = re.compile(r"(?:(?<![\w.-])([\w.-]+/[\w.-]+))?#(\d+)\b"
+                 r"|https?://[^\s/]+/([\w.-]+/[\w.-]+)/issues/(\d+)\b")
 
 
 def only_references(text):
