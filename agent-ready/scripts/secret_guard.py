@@ -24,7 +24,10 @@ Design notes
     Back it with a CI check (run `--tree`) if the repo matters.
   * The repository is untrusted input. --tree skips a tracked file that is a link, or sits in a
     folder that is one, and a config that is a link is an error (exit 2): a link can point at a
-    file outside the repo, and a one-character extra pattern would print it in full.
+    file outside the repo, and a one-character extra pattern would print it in full. Files are
+    opened folder by folder with links refused (POSIX), or opened and then checked for where
+    the handle really is (Windows). A platform with neither is refused (exit 2), since a link
+    swapped in after a check would otherwise be followed.
 """
 import argparse
 import fnmatch
@@ -99,12 +102,48 @@ NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 WALK_FDS = bool(NOFOLLOW) and hasattr(os, "O_DIRECTORY") and os.open in os.supports_dir_fd
 
 
+def handle_path(fd):
+    """Where open file fd really is, after every link, or None where the platform cannot say.
+    Only Windows is asked (GetFinalPathNameByHandleW); elsewhere the descriptor walk is used."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+    get = ctypes.WinDLL("kernel32", use_last_error=True).GetFinalPathNameByHandleW
+    get.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
+    get.restype = wintypes.DWORD
+    size = 32768
+    buf = ctypes.create_unicode_buffer(size)
+    n = get(msvcrt.get_osfhandle(fd), buf, size, 0)
+    if not n or n >= size:
+        raise ctypes.WinError(ctypes.get_last_error())
+    path = buf.value
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[8:]
+    return path[4:] if path.startswith("\\\\?\\") else path
+
+
 def open_inside(root, parts):
-    """Open root/parts... for reading. Where the platform allows, walk the folders by descriptor
-    and refuse links at open, so a path swapped for a link after the checks cannot be followed."""
+    """Open root/parts... for reading, never through a link, even one swapped in after the
+    checks. Where the platform allows, walk the folders by descriptor and refuse links at open.
+    Otherwise open the path, then ask where the handle really is and refuse it unless that is
+    root/parts. Where neither works, refuse to scan at all (exit 2)."""
     flags = os.O_RDONLY | NOFOLLOW | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
     if not WALK_FDS:
-        return os.open(os.path.join(str(root), *parts), flags)
+        path = os.path.join(str(root), *parts)
+        fd = os.open(path, flags)
+        try:
+            final = handle_path(fd)
+            if final is None:
+                die("secret_guard: this platform cannot open a file without following links, "
+                    "so the repository cannot be read safely; refusing to scan")
+            if os.path.normcase(final) != os.path.normcase(path):
+                raise Refused("%s is reached through a link" % "/".join(parts))
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
     folder = os.open(str(root), os.O_RDONLY | os.O_DIRECTORY)
     try:
         for part in parts[:-1]:

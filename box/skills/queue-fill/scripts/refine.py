@@ -37,17 +37,20 @@ repo, or the edit failed; 2 usage, input or host error (bad options, unreadable 
 file, an issue file that is a link or has other hard links, gh missing, a refused read).
 
 In a folder, the issue file is replaced by a new file, never written through: a file the folder
-links to elsewhere is refused and left as it is.
+links to elsewhere is refused and left as it is, and so is a folder reached through a link. Reads
+and the write are relative to the folder as first opened, so a folder swapped for a link later
+is not followed. Where the platform cannot do that (Windows), apply --folder --apply refuses to
+write (exit 1).
 """
 import argparse
 import os
 import re
+import secrets
 import shlex
 import shutil
 import stat
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -65,32 +68,61 @@ class HostError(Exception):
     """A read the host refused, or no gh: exit 2."""
 
 
+SAFE_WRITES = (select.DIR_FDS and os.rename in os.supports_dir_fd
+               and os.unlink in os.supports_dir_fd and hasattr(os, "fchmod"))
+
+
+def replace_entry(folder, name, data, mode):
+    """Write data to a new file in folder (a descriptor) and move it over entry name, relative to
+    folder throughout: neither a link nor a folder swapped in after the checks is followed. The
+    mode is set on the open file, and the entry moved in is checked to be that file. Returns an
+    error message, or None."""
+    tmp = ".%s.%s.tmp" % (name, secrets.token_hex(8))
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=folder)
+    try:
+        try:
+            view = memoryview(data)
+            while view:
+                view = view[os.write(fd, view):]
+            os.fchmod(fd, mode)
+            os.replace(tmp, name, src_dir_fd=folder, dst_dir_fd=folder)
+        except BaseException:
+            try:
+                os.unlink(tmp, dir_fd=folder)
+            except OSError:
+                pass
+            raise
+        if not os.path.samestat(os.fstat(fd), os.stat(name, dir_fd=folder,
+                                                      follow_symlinks=False)):
+            return "%s was swapped while it was written; check it by hand" % name
+    finally:
+        os.close(fd)
+    return None
+
+
 class Folder:
-    """An issue folder. Answers are `Owner answer` sections in the issue file."""
+    """An issue folder. Answers are `Owner answer` sections in the issue file. The folder is
+    opened once (select.IssueDir); every read and the write are relative to it."""
 
     def __init__(self, path):
         self.path = Path(path)
-        self.seen = {}  # number -> the issue file's lstat when it was read
+        self.dir = None
+        self.seen = {}  # number -> the issue file's stat when it was read
+
+    def folder(self):
+        if self.dir is None:
+            self.dir = select.IssueDir(self.path)
+        return self.dir
 
     def issues(self):
-        return [i for i in select.read_folder(self.path) if i["state"] == "OPEN"
-                and REFINE in i["labels"]]
+        d = self.folder()
+        return [i for i in (d.read(name)[0] for name in d.names())
+                if i["state"] == "OPEN" and REFINE in i["labels"]]
 
     def issue(self, number):
-        path = self.path / ("%d.md" % number)
-        try:
-            st = os.lstat(str(path))
-        except FileNotFoundError:
-            raise select.InputError("%s: no such issue file" % path)
-        if select.linked(st):
-            raise select.InputError("%s: is a link; refine edits only a plain file" % path)
-        if not stat.S_ISREG(st.st_mode):
-            raise select.InputError("%s: no such issue file" % path)
-        if st.st_nlink > 1:
-            raise select.InputError("%s: has other hard links, which an edit would change too"
-                                    % path)
+        issue, st = self.folder().read("%d.md" % number)
         self.seen[number] = st
-        return select.parse_issue_file(path)
+        return issue
 
     def answers(self, issue):
         return [("(in the file)", text) for _, title, _, text in issue_lint.headings(issue["body"])
@@ -100,33 +132,24 @@ class Folder:
         return None  # a folder has no label list
 
     def edit(self, issue, body, labels):
-        """Write a new file beside the issue file and move it over the entry, so a link swapped
-        in after the read is replaced, not followed. The entry must still be the file read."""
-        path = str(self.path / ("%d.md" % issue["number"]))
+        """Replace the issue file with a new one, so a link swapped in after the read is
+        replaced, not followed. The entry must still be the file read."""
+        name = "%d.md" % issue["number"]
+        if not SAFE_WRITES or self.dir is None or self.dir.fd is None:
+            return ("this platform cannot write into a folder without following links; "
+                    "nothing written")
         text = file_issues.issue_file(issue["number"], issue["title"], labels, body,
                                       issue["createdAt"], issue["state"].lower())
         try:
-            st = os.lstat(path)
+            st = os.stat(name, dir_fd=self.dir.fd, follow_symlinks=False)
             seen = self.seen.get(issue["number"])
             if seen is None or not os.path.samestat(st, seen) or select.linked(st) \
                     or st.st_nlink > 1:
-                return "%s changed after it was read; nothing written" % path
-            fd, tmp = tempfile.mkstemp(dir=str(self.path), prefix=".%d." % issue["number"],
-                                       suffix=".tmp")
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
-                    f.write(text)
-                os.chmod(tmp, stat.S_IMODE(st.st_mode))
-                os.replace(tmp, path)
-            except BaseException:
-                try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
-                raise
+                return "%s changed after it was read; nothing written" % name
+            return replace_entry(self.dir.fd, name, text.encode("utf-8"),
+                                 stat.S_IMODE(st.st_mode))
         except OSError as e:
             return str(e)
-        return None
 
 
 class Host:

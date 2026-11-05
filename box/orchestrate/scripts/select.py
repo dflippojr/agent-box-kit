@@ -36,6 +36,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:] = [p for p in sys.path if os.path.abspath(p or os.curdir) != HERE]
 
 import argparse  # noqa: E402
+import errno  # noqa: E402
+import fnmatch  # noqa: E402
 import importlib.util  # noqa: E402
 import json  # noqa: E402
 import re  # noqa: E402
@@ -165,41 +167,162 @@ def linked(st):
     return stat.S_ISLNK(st.st_mode) or bool(getattr(st, "st_file_attributes", 0) & 0x400)
 
 
-def parse_issue_file(path):
-    """An issue file: a header of `key: value` lines between `---` lines, then the body. A link
-    is refused: the folder's entries are untrusted, and one could lead to any file."""
-    if linked(os.lstat(str(path))):
-        raise InputError("%s: is a link; an issue file must be a plain file" % path.name)
-    text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+DIR_FDS = (hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY")
+           and os.open in os.supports_dir_fd and os.stat in os.supports_dir_fd
+           and os.listdir in os.supports_fd)
+
+
+def handle_path(fd):
+    """Where open file fd really is, after every link, or None where the platform cannot say.
+    Only Windows is asked (GetFinalPathNameByHandleW); elsewhere IssueDir walks by descriptor."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+    get = ctypes.WinDLL("kernel32", use_last_error=True).GetFinalPathNameByHandleW
+    get.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
+    get.restype = wintypes.DWORD
+    size = 32768
+    buf = ctypes.create_unicode_buffer(size)
+    n = get(msvcrt.get_osfhandle(fd), buf, size, 0)
+    if not n or n >= size:
+        raise ctypes.WinError(ctypes.get_last_error())
+    path = buf.value
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[8:]
+    return path[4:] if path.startswith("\\\\?\\") else path
+
+
+LINKED_FILE = "%s: is a link or has other hard links; an issue file must be a plain file"
+
+
+class IssueDir:
+    """An issue folder, opened once; its entries are untrusted. A folder on the way to it that is
+    a link is refused, and so is an issue file that is a link or has other hard links, even one
+    swapped in after a check. On POSIX every open is relative to the folder's descriptor with
+    links refused. On Windows a file is opened by path and refused unless its handle is where the
+    path says. A platform with neither is refused."""
+
+    def __init__(self, path):
+        self.path, self.fd = str(path), None
+        if DIR_FDS:
+            self.fd = self._walk()
+            return
+        self.real = os.path.realpath(self.path)
+        if os.path.normcase(self.real) != os.path.normcase(os.path.abspath(self.path)):
+            raise InputError("%s: passes through a link; give the folder's real path" % path)
+        if not os.path.isdir(self.real):
+            raise InputError("%s: not a folder" % path)
+
+    def _walk(self):
+        parts = Path(self.path).parts
+        absolute = Path(self.path).is_absolute()
+        fd = os.open(parts[0] if absolute else os.curdir, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            for part in parts[1:] if absolute else parts:
+                try:
+                    inner = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                    dir_fd=fd)
+                except OSError:
+                    try:
+                        is_link = linked(os.stat(part, dir_fd=fd, follow_symlinks=False))
+                    except OSError:
+                        is_link = False
+                    if is_link:
+                        raise InputError("%s: %s is a link; give the folder's real path"
+                                         % (self.path, part))
+                    raise InputError("%s: not a folder" % self.path)
+                os.close(fd)
+                fd = inner
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
+
+    def close(self):
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def names(self):
+        """The issue files' names, sorted."""
+        try:
+            names = os.listdir(self.fd if self.fd is not None else self.real)
+        except OSError as e:
+            raise InputError("%s: %s" % (self.path, e.strerror))
+        return sorted(n for n in names if fnmatch.fnmatch(n, "*.md"))
+
+    def read(self, name):
+        """(issue, stat) for issue file name, parsed from the bytes of the file checked."""
+        flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+                 | getattr(os, "O_BINARY", 0))
+        path = name if self.fd is not None else os.path.join(self.real, name)
+        try:
+            fd = os.open(path, flags, dir_fd=self.fd)
+        except OSError as e:
+            if e.errno in (errno.ELOOP, errno.EMLINK):
+                raise InputError(LINKED_FILE % name)
+            raise InputError("%s: %s" % (name, e.strerror))
+        with os.fdopen(fd, "rb") as f:
+            if self.fd is None:
+                final = handle_path(fd)
+                if final is None:
+                    raise InputError("%s: this platform cannot open a file without following "
+                                     "links; refusing to read the folder" % name)
+                if os.path.normcase(final) != os.path.normcase(path):
+                    raise InputError(LINKED_FILE % name)
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode):
+                raise InputError("%s: not a plain file" % name)
+            if st.st_nlink > 1:
+                raise InputError(LINKED_FILE % name)
+            try:
+                text = f.read().decode("utf-8")
+            except (OSError, UnicodeDecodeError) as e:
+                raise InputError("%s: %s" % (name, e))
+        return parse_issue_text(name, text), st
+
+
+def parse_issue_text(name, text):
+    """An issue file: a header of `key: value` lines between `---` lines, then the body."""
+    text = text.replace("\r\n", "\n")
     m = re.match(r"---\n(.*?)\n---\n?(.*)\Z", text, re.S)
     if not m:
-        raise InputError("%s: no header between --- lines" % path.name)
+        raise InputError("%s: no header between --- lines" % name)
     fields = {}
     for line in m.group(1).splitlines():
         if line.strip():
             key, sep, value = line.partition(":")
             if not sep:
-                raise InputError("%s: header line without a colon: %s" % (path.name, line))
+                raise InputError("%s: header line without a colon: %s" % (name, line))
             fields[key.strip()] = value.strip()
     fields["labels"] = [l.strip() for l in fields.get("labels", "").split(",") if l.strip()]
     fields["body"] = m.group(2)
-    issue = normalize(fields, path.name)
-    if path.stem != str(issue["number"]):
-        raise InputError("%s: number %d does not match the file name" % (path.name,
-                                                                         issue["number"]))
+    issue = normalize(fields, name)
+    if Path(name).stem != str(issue["number"]):
+        raise InputError("%s: number %d does not match the file name" % (name, issue["number"]))
     if issue["state"] not in ("OPEN", "CLOSED"):
-        raise InputError("%s: state must be open or closed" % path.name)
+        raise InputError("%s: state must be open or closed" % name)
     return issue
 
 
+def parse_issue_file(path):
+    """One issue file, read as IssueDir reads it."""
+    path = Path(path)
+    with IssueDir(path.parent) as folder:
+        return folder.read(path.name)[0]
+
+
 def read_folder(folder):
-    folder = Path(folder)
-    if not folder.is_dir():
-        raise InputError("%s: not a folder" % folder)
-    try:
-        return [parse_issue_file(p) for p in sorted(folder.glob("*.md"))]
-    except (OSError, UnicodeDecodeError) as e:
-        raise InputError(str(e))
+    with IssueDir(folder) as d:
+        return [d.read(name)[0] for name in d.names()]
 
 
 class Host:
