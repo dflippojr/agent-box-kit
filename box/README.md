@@ -22,6 +22,9 @@ handoff around the repos.
   can finish: a gap pass files box-audit's proposals, a dated bug-hunt pass files traced findings,
   and a refinement pass rewrites answered `needs-refinement` issues and marks them `ready`. Every
   pass writes one issue shape that `issue_lint.py` checks, and changes nothing without `--apply`.
+- [`lessons/`](lessons/README.md) holds one file per lesson, each linked to its `EVIDENCE.md` row
+  and to the check or STANDARD.md line that enforces it; the lessons nothing enforces yet are
+  listed as open.
 - [`orchestrate/`](orchestrate/README.md) specifies how ready issues become worker sessions and
   how a worker's PR is checked before the owner sees it: the label contract, selection, the worker
   brief and the handoff. `select.py` lists what can be dispatched now; `handoff_check.py` checks a
