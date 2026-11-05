@@ -254,6 +254,71 @@ def test_a_linked_config_is_refused_not_read(repo, tmp_path, mode):
     assert CANARY not in r.stdout + r.stderr
 
 
+# A folder swapped for a link after the guard checked it, before it opens the file inside: the
+# check must not be the only defence. The hook runs right after the guard's lstat of the folder.
+def secret_guard_module():
+    import sys
+    from conftest import SCRIPTS
+    if str(SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(SCRIPTS))
+    import secret_guard
+    return secret_guard
+
+
+def dir_link_or_skip(target, link):
+    if os.name == "nt":
+        import _winapi
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        symlink_or_skip(target, link)
+
+
+def proc_fd_path(fd):
+    return os.readlink("/proc/self/fd/%d" % fd)
+
+
+@pytest.mark.parametrize("opener", ["native", "fallback that can name a handle's path",
+                                    "fallback that cannot"])
+def test_tree_read_never_follows_a_folder_swapped_after_its_check(repo, tmp_path, monkeypatch,
+                                                                  opener):
+    sg = secret_guard_module()
+    if opener == "fallback that can name a handle's path":
+        if not os.path.isdir("/proc/self/fd"):
+            pytest.skip("no /proc/self/fd to stand in for a handle's path")
+        monkeypatch.setattr(sg, "WALK_FDS", False)
+        monkeypatch.setattr(sg, "handle_path", proc_fd_path, raising=False)
+    elif opener == "fallback that cannot":
+        monkeypatch.setattr(sg, "WALK_FDS", False)
+        monkeypatch.setattr(sg, "handle_path", lambda fd: None, raising=False)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "notes.txt").write_bytes((CANARY + "\n").encode())
+    write(repo, "d/notes.txt", "inside\n")
+    folder = repo / "d"
+    root = sg.Path(str(repo)).resolve()
+    real_lstat, done = os.lstat, []
+
+    def lstat(path, *a, **kw):
+        st = real_lstat(path, *a, **kw)
+        if not done and os.path.normcase(str(path)) == os.path.normcase(str(root / "d")):
+            done.append(True)
+            folder.rename(tmp_path / "moved")
+            dir_link_or_skip(outside, folder)
+        return st
+
+    monkeypatch.setattr(os, "lstat", lstat)
+    try:
+        data = sg.read_inside(root, "d/notes.txt", sg.MAX_FILE_BYTES)
+    except SystemExit as e:
+        assert opener == "fallback that cannot" and e.code == 2
+        data = b""
+    except (OSError, sg.Refused):
+        data = b""
+    assert done, "the hook never ran"
+    assert_canary_absent(data.decode("utf-8", "replace"))
+    assert opener != "fallback that cannot" or not data
+
+
 def test_not_a_git_repo_is_an_error(tmp_path):
     r = py("secret_guard.py", "--staged", "--dir", str(tmp_path))
     assert r.returncode not in (0, 1)
