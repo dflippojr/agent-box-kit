@@ -109,19 +109,13 @@ def handle_path(fd):
         return None
     import ctypes
     import msvcrt
-    from ctypes import wintypes
-    get = ctypes.WinDLL("kernel32", use_last_error=True).GetFinalPathNameByHandleW
-    get.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
-    get.restype = wintypes.DWORD
-    size = 32768
-    buf = ctypes.create_unicode_buffer(size)
-    n = get(msvcrt.get_osfhandle(fd), buf, size, 0)
-    if not n or n >= size:
-        raise ctypes.WinError(ctypes.get_last_error())
-    path = buf.value
-    if path.startswith("\\\\?\\UNC\\"):
-        return "\\\\" + path[8:]
-    return path[4:] if path.startswith("\\\\?\\") else path
+    buf = ctypes.create_unicode_buffer(32768)  # the longest path Windows has
+    n = ctypes.WinDLL("kernel32").GetFinalPathNameByHandleW(
+        ctypes.c_void_p(msvcrt.get_osfhandle(fd)), buf, len(buf), 0)
+    if not 0 < n < len(buf):
+        raise OSError("cannot tell where an open file is")
+    unc = buf.value.startswith("\\\\?\\UNC\\")  # \\?\UNC\server\share\...
+    return "\\" + buf.value[7:] if unc else buf.value[4:]
 
 
 def open_inside(root, parts):

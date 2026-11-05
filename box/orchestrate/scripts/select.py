@@ -179,19 +179,13 @@ def handle_path(fd):
         return None
     import ctypes
     import msvcrt
-    from ctypes import wintypes
-    get = ctypes.WinDLL("kernel32", use_last_error=True).GetFinalPathNameByHandleW
-    get.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
-    get.restype = wintypes.DWORD
-    size = 32768
-    buf = ctypes.create_unicode_buffer(size)
-    n = get(msvcrt.get_osfhandle(fd), buf, size, 0)
-    if not n or n >= size:
-        raise ctypes.WinError(ctypes.get_last_error())
-    path = buf.value
-    if path.startswith("\\\\?\\UNC\\"):
-        return "\\\\" + path[8:]
-    return path[4:] if path.startswith("\\\\?\\") else path
+    buf = ctypes.create_unicode_buffer(32768)  # the longest path Windows has
+    n = ctypes.WinDLL("kernel32").GetFinalPathNameByHandleW(
+        ctypes.c_void_p(msvcrt.get_osfhandle(fd)), buf, len(buf), 0)
+    if not 0 < n < len(buf):
+        raise OSError("cannot tell where an open file is")
+    unc = buf.value.startswith("\\\\?\\UNC\\")  # \\?\UNC\server\share\...
+    return "\\" + buf.value[7:] if unc else buf.value[4:]
 
 
 LINKED_FILE = "%s: is a link or has other hard links; an issue file must be a plain file"
@@ -217,10 +211,11 @@ class IssueDir:
 
     def _walk(self):
         parts = Path(self.path).parts
-        absolute = Path(self.path).is_absolute()
-        fd = os.open(parts[0] if absolute else os.curdir, os.O_RDONLY | os.O_DIRECTORY)
+        absolute = Path(self.path).is_absolute()  # POSIX only here, so the anchor is "/"
+        fd = os.open("/" if absolute else os.curdir, os.O_RDONLY | os.O_DIRECTORY)
         try:
             for part in parts[1:] if absolute else parts:
+                part = os.path.basename(part)  # one component, never a path
                 try:
                     inner = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
                                     dir_fd=fd)
@@ -270,7 +265,7 @@ class IssueDir:
             if e.errno in (errno.ELOOP, errno.EMLINK):
                 raise InputError(LINKED_FILE % name)
             raise InputError("%s: %s" % (name, e.strerror))
-        with os.fdopen(fd, "rb") as f:
+        try:
             if self.fd is None:
                 final = handle_path(fd)
                 if final is None:
@@ -283,10 +278,14 @@ class IssueDir:
                 raise InputError("%s: not a plain file" % name)
             if st.st_nlink > 1:
                 raise InputError(LINKED_FILE % name)
-            try:
+            with os.fdopen(fd, "rb") as f:
+                fd = None  # f closes it
                 text = f.read().decode("utf-8")
-            except (OSError, UnicodeDecodeError) as e:
-                raise InputError("%s: %s" % (name, e))
+        except (OSError, UnicodeDecodeError) as e:
+            raise InputError("%s: %s" % (name, e))
+        finally:
+            if fd is not None:
+                os.close(fd)
         return parse_issue_text(name, text), st
 
 

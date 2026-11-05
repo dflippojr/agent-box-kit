@@ -319,6 +319,19 @@ def test_tree_read_never_follows_a_folder_swapped_after_its_check(repo, tmp_path
     assert opener != "fallback that cannot" or not data
 
 
+
+@pytest.mark.parametrize("by_path", [False, True], ids=["native", "fallback"])
+def test_read_inside_reads_a_plain_file_in_a_folder(repo, monkeypatch, by_path):
+    sg = secret_guard_module()
+    if by_path:
+        if not os.path.isdir("/proc/self/fd"):
+            pytest.skip("no /proc/self/fd to stand in for a handle's path")
+        monkeypatch.setattr(sg, "WALK_FDS", False)
+        monkeypatch.setattr(sg, "handle_path", proc_fd_path)
+    write(repo, "d/e/notes.txt", "inside\n")
+    root = sg.Path(str(repo)).resolve()
+    assert sg.read_inside(root, "d/e/notes.txt", sg.MAX_FILE_BYTES) == b"inside\n"
+
 def test_not_a_git_repo_is_an_error(tmp_path):
     r = py("secret_guard.py", "--staged", "--dir", str(tmp_path))
     assert r.returncode not in (0, 1)
