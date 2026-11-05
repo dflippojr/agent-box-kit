@@ -1399,3 +1399,43 @@ def test_local_mode_ignores_an_ssh_program_set_in_the_checkout(ssh_signing, tmp_
 def test_local_mode_owner_key_usage_errors(branch, extra):
     repo, head, note, gate = branch
     assert local(repo, note, gate, *extra).returncode == 2
+
+
+# Issue bodies are untrusted. Before the fix each of these took over 5 s on 64 KB: REF retried
+# `[\w.-]+/` from every letter of a long word, and LABEL's lazy run and its trailing `[*_]*` could
+# split a run of underscores many ways. A child process with a timeout keeps a regression from
+# hanging the suite.
+@pytest.mark.parametrize("call", [
+    "s.REF.search('a' * 200000)",
+    "s.REF.search('a' * 100000 + '/' + 'a' * 100000)",
+    "s.LABEL.match('a' + '_' * 200000)",
+    "s.unread_dependencies('Dependencies: ' + 'a' * 200000)",
+    "s.unread_dependencies('Dependencies: #1\\n- a' + '_' * 200000)",
+])
+def test_select_patterns_stay_fast_on_hostile_issue_bodies(call):
+    code = ("import importlib.util; spec = importlib.util.spec_from_file_location('s', %r); "
+            "s = importlib.util.module_from_spec(spec); spec.loader.exec_module(s); %s"
+            % (str(SCRIPTS / "select.py"), call))
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=5)
+
+
+@pytest.mark.parametrize("item, end", [
+    ("Hard: #1", 5), ("**Hard**: #1", 9), ("Soft_*: x", 7), ("a__*_: x", 6), ("Hard*_*:", 8),
+    ("Hard (later): #2", 13), ("see https://example.com", None), ("1st: x", None), ("a*b:", None),
+])
+def test_label_still_ends_at_the_first_colon(item, end):
+    m = selector.LABEL.match(item)
+    assert (m.end() if m else None) == end
+
+
+@pytest.mark.parametrize("text, found", [
+    ("#12", [(None, "12", None, None)]),
+    ("owner/app#7 and #8", [("owner/app", "7", None, None), (None, "8", None, None)]),
+    ("x.y/a-b/c#3", [("a-b/c", "3", None, None)]),
+    ("word#4", [(None, "4", None, None)]),
+    ("https://example.com/owner/app/issues/9", [(None, None, "owner/app", "9")]),
+    ("a/b #5", [(None, "5", None, None)]),
+    ("no reference here / at all", []),
+])
+def test_ref_still_finds_the_same_references(text, found):
+    assert [m.groups() for m in selector.REF.finditer(text)] == found

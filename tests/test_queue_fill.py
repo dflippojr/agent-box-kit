@@ -833,3 +833,22 @@ def test_fence_like_does_not_backtrack_on_a_long_list_marker_line(unit):
 @pytest.mark.parametrize("line", ["```", "- ```", "-  ```", "-   > ~~~", "1.  ```", " > * \t ```"])
 def test_fence_like_still_finds_a_fence_after_markers(line):
     assert issue_lint.FENCE_LIKE.match(line)
+
+
+@pytest.mark.parametrize("line", ["'# ' + '#' * 200000 + 'x'", "'# ' + ' #\\t' * 70000 + 'x'"])
+def test_heading_does_not_backtrack_on_a_long_run_of_closing_hashes(line):
+    """`(.*?)[ \\t#]*$` rescanned the rest of the line for each character the lazy text took, so
+    one heading line of 64 KB took over 5 s. Issue bodies are untrusted."""
+    code = ("import sys; sys.path[:0] = %r; import issue_lint; "
+            "assert issue_lint.HEADING.match(%s)" % (sys.path, line))
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=5)
+
+
+@pytest.mark.parametrize("line, groups", [
+    ("# Title", ("#", "Title")), ("## Title ##", ("##", "Title")), ("#  a # b #  ", ("#", "a # b")),
+    ("### C# \t#", ("###", "C")), ("# #", ("#", "")), ("#\t", ("#", "")), ("   ###### x", ("######", "x")),
+    ("    # x", None), ("####### x", None), ("#x", None),
+])
+def test_heading_still_strips_the_closing_sequence(line, groups):
+    m = issue_lint.HEADING.match(line)
+    assert (m.groups() if m else None) == groups
