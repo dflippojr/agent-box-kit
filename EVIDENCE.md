@@ -331,6 +331,19 @@ open, and only behind `--apply`.
 | Refinement only removes `needs-refinement` and adds `ready`; every other label stays (`refine.py`) | The issue's constraint; the org contributing guide's owner-only labels | observed (synthetic) | A stand-in `gh` test checks the edit command's only label flags, with `gate-change-approved` on the issue. |
 | Without a hosted VCS, passes write issue files `select.py` reads; an owner answer is an `Owner answer` section (`file_issues.py --folder`, `refine.py`) | The issue; the orchestration spec's issue-folder format | observed (synthetic) for the files; hypothesis for the answer convention | Tests round-trip filed and refined issues through `select.py`. Who wrote an answer is only as trustworthy as the folder's history. |
 
+## Lessons registry (`box/lessons/`, added 2026-11-05)
+
+Each lesson in `box/lessons/` links one row of this file by the exact text of its first cell. The
+seed lessons come from STANDARD.md's failure stories and the rows above; these rows are the rules
+a seed lesson needed that had no row yet.
+
+| Rule (where) | Source | Evidence | Notes |
+|---|---|---|---|
+| A lessons registry: one file per lesson, its Rule linked to a row here, its check named, `open` when nothing enforces it (`box/lessons/`, `tests/test_lessons.py`) | The owner's decision on the registry issue (2026-10-22): a note records what went wrong but not whether anything now stops it | hypothesis | The test checks the links, paths, anchors and statuses. Nothing shows yet that a registry stops a lesson recurring. |
+| A tamper guard flags a change that deletes or skips tests, adds retries or edits gate config, and only the owner's approval passes it (STANDARD.md G, `templates/scripts/tamper_guard.py`) | STANDARD.md D failure story 4: a coverage floor lowered in passing | observed | `tests/test_box_bootstrap.py` flags each kind of change on a sample repo and passes it with `--approved`. |
+| A script's exit 1 is its verdict; a bad config or other error exits 2 (AGENTS.md, `agent-ready/scripts/`) | Script evidence item 2: `raise SystemExit("msg")` exited 1, the documented code for findings | observed | `tests/test_secret_guard.py` checks that bad config exits 2, not 1. |
+| A doc says what was run and what was only read; "verified" only for what ran (modules 01, 11) | First real use: a header claimed every command "run and verified"; the module 11 run: `Verified against: <sha>` on code only read | observed | Two runs. Module 01's template now marks commands run / not run and module 11's header says `Basis: read from code`. No check reads a generated doc for this, so the lesson is `open`. |
+
 ## Excluded on purpose
 
 - Agent pools, tier routing, usage snapshots, effort routing, review-backend fallthrough

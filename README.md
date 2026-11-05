@@ -55,6 +55,8 @@ box/
                                templates chosen by the profile, checked by box-audit's collectors
   skills/skill-eval/           test a skill change A vs B: isolated sessions, checks, a blind judge,
                                a trigger check and a verdict, under a cost cap (stdlib Python)
+  lessons/                     one file per lesson, linked to its EVIDENCE.md row and the check that
+                               enforces it; a README lists them and the open ones
   orchestrate/                 dispatch spec: labels, selection, worker brief, handoff; two scripts
                                check the queue and a worker's PR (stdlib Python)
 tests/                         pytest suite for the scripts, the box audit, box-bootstrap, skill-eval,
