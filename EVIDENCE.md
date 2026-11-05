@@ -344,6 +344,19 @@ a seed lesson needed that had no row yet.
 | A script's exit 1 is its verdict; a bad config or other error exits 2 (AGENTS.md, `agent-ready/scripts/`) | Script evidence item 2: `raise SystemExit("msg")` exited 1, the documented code for findings | observed | `tests/test_secret_guard.py` checks that bad config exits 2, not 1. |
 | A doc says what was run and what was only read; "verified" only for what ran (modules 01, 11) | First real use: a header claimed every command "run and verified"; the module 11 run: `Verified against: <sha>` on code only read | observed | Two runs. Module 01's template now marks commands run / not run and module 11's header says `Basis: read from code`. No check reads a generated doc for this, so the lesson is `open`. |
 
+## Ratchet (`box/ratchet/`, added 2026-11-05)
+
+Owner decision on the ratchet issue (2026-10-22): what counts as incorrect, the 30-day horizon,
+fixed windows of N=20 and "too few PRs to say" below N, and the kit's own row format that a private
+ledger maps to.
+
+| Rule (where) | Source | Evidence | Notes |
+|---|---|---|---|
+| A rubric or lesson change is judged by the incorrect rate of the last N settled merged PRs before it against the first N after it; below N, "too few PRs to say" (`box/ratchet/`, `ratchet.py`) | The owner's decision; STANDARD.md D applied to the kit | hypothesis | `tests/test_ratchet.py` checks the arithmetic on synthetic ledgers. No real ledger has been run, so nothing yet shows a verdict predicts anything. |
+| Incorrect = an escaped defect traced to the PR or a revert within 30 days of the merge; a PR merged under 30 days before the report date is pending and counts nowhere (`ratchet.py`) | The owner's decision | asserted | The tests pin the boundaries: day 30 counts, day 31 does not; 30 days before the report date is settled, 29 is pending. |
+| A malformed ledger row stops the report and names the file and row; none is skipped (`ratchet.py`) | The issue; a skipped row would bias the rate silently | observed (synthetic) | Tests break one field at a time in both formats and expect exit 2 and the row number. |
+| Keep a rule whose rate fell; revise or drop one whose rate did not; wait when there are too few PRs, and do not shrink the window to force a verdict (`box/ratchet/README.md`) | The issue; AGENTS.md "prefer cutting to adding" | hypothesis | Two fixed windows with no significance test: a difference of one or two PRs in 20 is noise. |
+
 ## Excluded on purpose
 
 - Agent pools, tier routing, usage snapshots, effort routing, review-backend fallthrough
