@@ -433,3 +433,98 @@ def test_a_one_hyphen_delimiter_starts_a_table(tmp_path):
     problems = provenance_problems(root)
     assert len(problems) == 1
     assert problems[0].endswith(": evidence 'verified' is not observed/asserted/hypothesis")
+
+
+# ----- only real rule-table rows give coverage (review round 3) ------------------------------
+
+RULE_TABLE = "| Rule (module) | Source | Evidence | Notes |\n|---|---|---|---|\n"
+
+
+def indent(block, prefix):
+    return "".join(prefix + line + "\n" for line in block.splitlines())
+
+
+def wrapped(kind, n):
+    """A block appended to EVIDENCE.md, or a row inserted into its first rule table, that
+    names module n somewhere GFM would not render it as a cell of a rule-table row."""
+    row = "| Example ({}) | none | hypothesis | |".format(n)
+    table = RULE_TABLE + row + "\n"
+    path = "`agent-ready/modules/{}-new-module.md`".format(n)
+    blocks = {
+        "fence with a blank line": "```\nexample\n\n" + table + "```\n",
+        "tilde fence": "~~~\n" + table + "~~~\n",
+        "four-space indent": indent(table, "    "),
+        "tab indent": indent(table, "\t"),
+        "HTML comment with a blank line": "<!--\nexample\n\n" + table + "-->\n",
+        "pre block": "<pre>\n" + table + "</pre>\n",
+        "blockquote": indent(table, "> "),
+        "list item": "- example\n\n" + indent(table, "  "),
+        "header after a paragraph": "Some text.\n" + table,
+        "header indented two spaces": indent(table, "  "),
+    }
+    rows = {
+        "excess cell": "| Example | none | hypothesis | | {} |".format(path),
+        "list line after a row": "- note\n" + row,
+        "inline HTML comment": "| Example <!-- ({}) --> | none | hypothesis | |".format(n),
+        "Source column": "| Example | {} | hypothesis | |".format(path),
+    }
+    return ("append", blocks[kind]) if kind in blocks else ("row", rows[kind])
+
+
+SWEEP = ["fence with a blank line", "tilde fence", "four-space indent", "tab indent",
+         "HTML comment with a blank line", "pre block", "blockquote", "list item",
+         "header after a paragraph", "header indented two spaces", "excess cell",
+         "list line after a row", "inline HTML comment", "Source column"]
+
+
+def add_text(root, how, text):
+    if how == "row":
+        append_row(root, text)
+    else:
+        with (root / "EVIDENCE.md").open("a", encoding="utf-8") as f:
+            f.write("\n" + text)
+
+
+def test_only_rendered_rule_rows_cover_a_module(tmp_path):
+    """Sweep: each way of writing a module's number outside a rule-table cell covers nothing."""
+    covered = []
+    for i, kind in enumerate(SWEEP):
+        root = copy_tree(tmp_path / str(i))
+        number, missing = add_module(root)
+        add_text(root, *wrapped(kind, number))
+        if missing not in provenance_problems(root):
+            covered.append(kind)
+    assert covered == []
+
+
+def test_an_indented_code_sample_is_rejected_and_covers_nothing(tmp_path):
+    root = copy_tree(tmp_path)
+    number, missing = add_module(root)
+    add_text(root, *wrapped("four-space indent", number))
+    problems = provenance_problems(root)
+    assert missing in problems
+    others = [p for p in problems if p != missing]
+    assert len(others) == 3 and all("plain tables only" in p for p in others)
+
+
+def test_a_path_in_a_discarded_cell_covers_nothing(tmp_path):
+    root = copy_tree(tmp_path)
+    number, missing = add_module(root)
+    add_text(root, *wrapped("excess cell", number))
+    problems = provenance_problems(root)
+    assert len(problems) == 2 and problems[1] == missing
+    assert problems[0].endswith(": row has 5 cells, its table has 4")
+
+
+def test_a_missing_path_in_a_discarded_cell_is_not_checked(tmp_path):
+    root = copy_tree(tmp_path)
+    append_row(root, "| A rule (02) | none | hypothesis | | `agent-ready/templates/GONE.md` |")
+    problems = provenance_problems(root)
+    assert len(problems) == 1
+    assert problems[0].endswith(": row has 5 cells, its table has 4")
+
+
+def test_a_valid_workflow_reference_survives_the_fixture_copy(tmp_path):
+    root = copy_tree(tmp_path)
+    append_row(root, "| CI runs the suite (02) | none | observed | `.github/workflows/tests.yml` |")
+    assert provenance_problems(root) == []
