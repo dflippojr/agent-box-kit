@@ -25,6 +25,10 @@ handoff around the repos.
 - [`lessons/`](lessons/README.md) holds one file per lesson, each linked to its `EVIDENCE.md` row
   and to the check or STANDARD.md line that enforces it; the lessons nothing enforces yet are
   listed as open.
+- [`ratchet/`](ratchet/README.md) checks whether a rubric or lesson change made merged work more
+  correct. It defines the kit's outcome ledger format, one row per merged PR, and `ratchet.py`
+  compares the incorrect rate of the last 20 settled PRs before each change with the first 20
+  after it, or says there are too few PRs to say.
 - [`orchestrate/`](orchestrate/README.md) specifies how ready issues become worker sessions and
   how a worker's PR is checked before the owner sees it: the label contract, selection, the worker
   brief and the handoff. `select.py` lists what can be dispatched now; `handoff_check.py` checks a
