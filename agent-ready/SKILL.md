@@ -1,6 +1,6 @@
 ---
 name: agent-ready
-description: Guide for engineering work on an existing codebase that a human owner will review: changing or fixing code, turning a request into a plan, writing AGENTS.md, and checking a change is ready to merge. Not for standalone questions, explanations or summaries, such as what a regex, a command or a language feature does.
+description: Guide for engineering work on an existing codebase that a human owner will review: changing or fixing code, turning a request into requirements and a plan, writing AGENTS.md, and checking a change is ready to merge. Not for standalone questions, explanations or summaries, such as what a regex, a command or a language feature does.
 ---
 
 # agent-ready
