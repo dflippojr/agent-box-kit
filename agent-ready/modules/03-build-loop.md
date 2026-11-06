@@ -46,7 +46,9 @@ If a task marked routine turns out risky, switch lanes rather than pushing on.
 - A `Verify:` fails after one retry.
 - A guardrail or hook blocks you.
 - A real ambiguity the requirements cannot answer. Ask **one** concise question with a
-  recommended default.
+  recommended default. If your instructions say no human will answer (an unattended run), write
+  that question on the issue, or wherever the repo says the owner reads, then stop and say
+  where. Do not guess, wait, or end your reply on a question.
 - The MVP marker is reached.
 - You are about to take an action that is irreversible, outside your worktree, or affects
   something shared (see 06 on stating side effects before you start).

@@ -467,7 +467,8 @@ def test_proof_variants_change_only_what_they_claim(tmp_path):
     assert a == (ROOT / "agent-ready" / "SKILL.md").read_text(encoding="utf-8").replace(
         "\r\n", "\n")
     assert "Assert, don't verify" in harmful and "change the check until it passes" in harmful
-    assert len(set(a.splitlines()) ^ set(harmful.splitlines())) == 8  # rules 1 and 4, 2 lines each
+    # rule 1: 2 lines each side; rule 4: 4 lines in A, 2 in harmful
+    assert len(set(a.splitlines()) ^ set(harmful.splitlines())) == 10
     assert noop != a and sorted(filter(None, noop.splitlines())) == sorted(
         filter(None, a.splitlines()))
     for name in ("a", "harmful", "noop"):
