@@ -5,7 +5,8 @@ A rule row is a data row of an EVIDENCE.md table whose header has an `Evidence` 
 Finding | Change tables have none and are skipped). Tables are read as GFM reads them: every
 line after the delimiter row is a data row, with or without leading and trailing pipes, until a
 blank line or another block. A line that starts with a pipe outside any such table (say, under
-a header whose delimiter row has a different cell count) fails. For those rows:
+a header whose delimiter row has a different cell count) fails. A fenced code block (``` or
+~~~) is a code sample, so a table inside one is no rule row and covers nothing. For those rows:
 
 - Coverage. Each file under agent-ready/modules/ and agent-ready/templates/ must be named by at
   least one rule row. A module is named by its number in the row's first cell, in a parenthetical
@@ -18,14 +19,15 @@ a header whose delimiter row has a different cell count) fails. For those rows:
   names (`CI-CD.md`) and paths in other repos (`templates/scripts/check.py`, relative to a box
   skill) are not checked.
 - Module numbers exist. A module number in a first-cell parenthetical must match an
-  agent-ready/modules/NN-*.md file.
+  agent-ready/modules/NN-*.md file, and no two module files may share a number.
 - Evidence levels. The Evidence cell, with parentheticals removed and split on `;` and `,`, must
   be clauses that each start with observed, asserted or hypothesis. So `observed (stale doc),
   hypothesis (baseline practice)` passes and `verified`, `proven` or an empty cell fails.
 
 Out of scope (issue #16): a new rule added to a module that already has rows; rule IDs; a diff
 check. The negative controls copy the real EVIDENCE.md into tmp_path and expect the same checker
-to reject each broken tree.
+to reject each broken tree. A control that adds a module picks a number the copied tree does not
+use, so adding the next real module does not break it.
 """
 import re
 import shutil
@@ -43,6 +45,7 @@ PAREN_RE = re.compile(r"\(([^()]*)\)")
 MODULE_GROUP_RE = re.compile(r"^(?:modules? )?\d\d(?:(?:, ?| and )\d\d)*(?:, [a-z ]+)?$")
 TWO_DIGITS_RE = re.compile(r"\b\d\d\b")
 MODULE_FILE_RE = re.compile(r"^(\d\d)-.+\.md$")
+FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 
 
 def split_row(line):
@@ -65,24 +68,53 @@ def ends_table(line):
     return not stripped or stripped.startswith(("#", ">", "```", "~~~"))
 
 
+def fence_opening(line):
+    """The fence (say ``` or ~~~~) a line opens, or None (GFM fenced code blocks)."""
+    m = FENCE_RE.match(line)
+    if not m or (m.group(1)[0] == "`" and "`" in m.group(2)):
+        return None
+    return m.group(1)
+
+
+def closes_fence(line, fence):
+    """True when line closes a code block opened by fence: same character, at least as long."""
+    m = FENCE_RE.match(line)
+    return bool(m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence)
+                and not m.group(2).strip())
+
+
 def parse_tables(text):
-    """(rows, table line numbers): every table's data rows as (line number, headers, cells).
+    """(rows, skipped line numbers): every table's data rows as (line number, headers, cells).
 
     Tables follow GFM: a header line with a pipe, then a delimiter row with as many cells. Every
     later line is a data row, leading and trailing pipes optional, until a blank line or another
     block starts. A row line with no pipe at all is still a row, so it fails the Evidence check
-    instead of being skipped. The line numbers cover headers, delimiters and rows.
+    instead of being skipped. A fenced code block is a code sample, not a table, so nothing in it
+    is a row; an unclosed fence runs to the end of the file. The skipped line numbers cover
+    table headers, delimiters and rows, and every line of a fenced code block.
     """
     lines = text.replace("\r\n", "\n").splitlines()
     rows = []
     in_table = set()
     headers = None
+    fence = None
     i = 0
     while i < len(lines):
         line = lines[i]
+        if fence is not None:
+            in_table.add(i + 1)
+            if closes_fence(line, fence):
+                fence = None
+            i += 1
+            continue
         if headers is not None and ends_table(line):
             headers = None
         if headers is None:
+            fence = fence_opening(line)
+            if fence is not None:
+                in_table.add(i + 1)
+                i += 1
+                continue
             cells = split_row(line)
             if (PIPE_RE.search(line) and i + 1 < len(lines)
                     and is_delimiter(lines[i + 1], len(cells))):
@@ -112,7 +144,7 @@ def stray_table_lines(text):
     """Line numbers of lines that start with a pipe but belong to no table GFM would render.
 
     A header whose delimiter row has a different cell count is not a table, so its rows would
-    otherwise be skipped without a word.
+    otherwise be skipped without a word. Pipe lines in a fenced code block are code, not stray.
     """
     in_table = parse_tables(text)[1]
     lines = text.replace("\r\n", "\n").splitlines()
@@ -158,12 +190,12 @@ def covered_files(root):
 
 
 def module_files(root):
-    """Map module number to its repo-relative path, from agent-ready/modules/NN-*.md."""
+    """Map module number to the sorted repo-relative paths of agent-ready/modules/NN-*.md."""
     mapping = {}
-    for p in (root / "agent-ready" / "modules").glob("*.md"):
+    for p in sorted((root / "agent-ready" / "modules").glob("*.md")):
         m = MODULE_FILE_RE.match(p.name)
         if m:
-            mapping[m.group(1)] = p.relative_to(root).as_posix()
+            mapping.setdefault(m.group(1), []).append(p.relative_to(root).as_posix())
     return mapping
 
 
@@ -174,13 +206,17 @@ def provenance_problems(root):
     named = set()
     problems = ["EVIDENCE.md:{}: table line outside a table (no matching delimiter row)".format(n)
                 for n in stray_table_lines(text)]
+    for number, paths in sorted(modules.items()):
+        if len(paths) > 1:
+            problems.append("agent-ready/modules: {} share module number {}".format(
+                " and ".join(Path(p).name for p in paths), number))
     for lineno, cells, evidence in rule_rows(text):
         where = "EVIDENCE.md:{}".format(lineno)
         if not level_ok(evidence):
             problems.append("{}: evidence {!r} is not {}".format(where, evidence, "/".join(LEVELS)))
         for number in sorted(module_numbers(cells[0])):
             if number in modules:
-                named.add(modules[number])
+                named.update(modules[number])
             else:
                 problems.append("{}: names module {}, which has no file".format(where, number))
         for path in repo_paths(" | ".join(cells)):
@@ -229,7 +265,8 @@ def append_row(root, row):
 
 def add_module(root):
     """Add a module file under a number no module in root uses; return (number, missing-row problem)."""
-    number = "12"
+    used = module_files(root)
+    number = next("{:02d}".format(n) for n in range(1, 100) if "{:02d}".format(n) not in used)
     path = "agent-ready/modules/{}-new-module.md".format(number)
     (root / path).write_text("# {}\n".format(number), encoding="utf-8")
     return number, "{}: no EVIDENCE.md row names it".format(path)
