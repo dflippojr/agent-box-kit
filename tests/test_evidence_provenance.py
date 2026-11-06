@@ -263,10 +263,15 @@ def append_row(root, row):
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def add_module(root):
-    """Add a module file under a number no module in root uses; return (number, missing-row problem)."""
+def unused_number(root):
+    """The lowest two-digit module number no file in root's agent-ready/modules/ uses."""
     used = module_files(root)
-    number = next("{:02d}".format(n) for n in range(1, 100) if "{:02d}".format(n) not in used)
+    return next("{:02d}".format(n) for n in range(1, 100) if "{:02d}".format(n) not in used)
+
+
+def add_module(root):
+    """Add a module file under an unused number; return (number, its missing-row problem)."""
+    number = unused_number(root)
     path = "agent-ready/modules/{}-new-module.md".format(number)
     (root / path).write_text("# {}\n".format(number), encoding="utf-8")
     return number, "{}: no EVIDENCE.md row names it".format(path)
@@ -286,24 +291,27 @@ def test_a_new_module_passes_once_a_row_names_its_number(tmp_path):
     assert provenance_problems(root) == []
 
 
-def test_the_new_module_controls_survive_a_real_module_12(tmp_path):
-    """A valid module 12 with its row, added later, must not break the controls that add a module."""
+def test_the_new_module_controls_survive_the_next_real_module(tmp_path):
+    """The next real module, with its row, must not break the controls that add a module."""
     root = copy_tree(tmp_path)
-    (root / "agent-ready" / "modules" / "12-new-module.md").write_text("# 12\n", encoding="utf-8")
-    append_row(root, "| A real rule (12) | none | hypothesis | |")
+    taken = unused_number(root)
+    (root / "agent-ready" / "modules" / "{}-new-module.md".format(taken)).write_text(
+        "# {}\n".format(taken), encoding="utf-8")
+    append_row(root, "| A real rule ({}) | none | hypothesis | |".format(taken))
     assert provenance_problems(root) == []
     number, missing = add_module(root)
-    assert number != "12"
+    assert number != taken
     assert provenance_problems(root) == [missing]
 
 
 def test_two_modules_sharing_a_number_fail(tmp_path):
     root = copy_tree(tmp_path)
-    for name in ("12-one.md", "12-two.md"):
-        (root / "agent-ready" / "modules" / name).write_text("# 12\n", encoding="utf-8")
-    append_row(root, "| A rule (12) | none | hypothesis | |")
+    n = unused_number(root)
+    for name in ("{}-one.md", "{}-two.md"):
+        (root / "agent-ready" / "modules" / name.format(n)).write_text("# x\n", encoding="utf-8")
+    append_row(root, "| A rule ({}) | none | hypothesis | |".format(n))
     assert provenance_problems(root) == [
-        "agent-ready/modules: 12-one.md and 12-two.md share module number 12"]
+        "agent-ready/modules: {0}-one.md and {0}-two.md share module number {0}".format(n)]
 
 
 def test_a_table_in_a_code_fence_is_not_evidence(tmp_path):
