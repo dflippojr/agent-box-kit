@@ -48,9 +48,35 @@ and this set-up cannot show either of them:
   check needs, and that alone was enough for the model.
 - **Fewer near-miss picks**: A picks 0/15 already, so B cannot pick fewer.
 
-The decision belongs to the owner (see the PR).
+The owner decided (issue #17, 2026-11-06): merge on "no worse on any signal" plus the
+consistency tests. No follow-up eval.
 
-## What would change this decision
+## Did the runs read B's description?
+Yes. Review found that both B revisions' front matter is not valid YAML: the unquoted
+description holds "will review: changing", and a strict parser (PyYAML 6.0.3) stops with
+"mapping values are not allowed here". A parses. So the question is what the sessions saw.
+
+- skill-eval reads only `name` from the front matter, with its own line match. It copies the
+  skill folder into the session's skills directory and the harness loads it from there.
+- The harness the runs used (the CLI version installed before the runs and current at the time
+  of review) loads a project skill through one front matter parser. That parser tries a strict
+  YAML parse. If that fails, it double-quotes every `key: value` line whose value holds `: ` or
+  a YAML indicator, then parses again. The skill's metadata is ignored only when both fail.
+- Replaying that fallback, with PyYAML in place of the harness's own parser, gives name
+  `agent-ready` and a description character for character equal to the file's text for both
+  9043bee (315 characters) and 1b4784b (332 characters).
+- The runs agree. 9043bee and 1b4784b differ only in the word "requirements" in the
+  description, and `plan-risky-job` picks went from 0/3 to 3/3. A session that never saw B's
+  description could not have reacted to that word.
+
+The description is now quoted, so it parses as written (`tests/test_skill_front_matter.py`).
+The parsed text equals what the runs saw, so the committed reports stand. The current SKILL.md
+hash differs from run 2's B hash only by the two quote characters.
+
+Not checked: the harness's own YAML parser was not run (no standalone runtime on this host). The
+trace is from reading its loader code, and the replay used PyYAML.
+
+## What would show the rule helps
 A run where the skill is actually loaded on the unattended task. That needs a session model that
 loads skills more often than haiku did here, which picked the skill on 6 of 18 task prompts, or
 an unattended prompt that triggers the skill. If A then fails the unattended checks and B
