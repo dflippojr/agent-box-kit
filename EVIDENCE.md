@@ -20,14 +20,14 @@ from that private history.
 
 | Rule (module) | Source | Evidence | Notes |
 |---|---|---|---|
-| Every requirement has a Verify; every task has a runnable Verify and risk flag (02) | H: requirements and plan-breakdown skills; the project's real `REQUIREMENTS.md` and `PLAN.md` | observed | Real plan follows the format throughout. |
+| Every requirement has a Verify; every task has a runnable Verify and risk flag (02) | H: requirements and plan-breakdown skills; the project's real `REQUIREMENTS.md` and `PLAN.md` | observed | Real plan follows the format throughout. Templates: `agent-ready/templates/REQUIREMENTS.md`, `agent-ready/templates/PLAN.md`. |
 | Plan review pass reorders and catches hazards (02) | H: a "revise PLAN per review" commit; the PLAN header lists the hazards | observed | The value of the pass itself is asserted, not measured. |
 | Ordering: safety before ingestion; create thing before capturing fixture; non-sensitive trigger; negative fixture (02) | H: real `PLAN.md` tasks 3-5 | observed | |
 | Plan is living; record deviations (02) | H: PLAN tasks 8 and 9 "reframed", "built ahead of Task 8" | observed | |
 | Facts confirmed against reality, with dates and confirmed/unconfirmed (02) | H: REQUIREMENTS "confirmed facts", one item "not yet confirmed" | observed | |
 | Smoke-test external dependency first (02) | H: a smoke test passed before building | observed | |
 | "Ready" = zero further decisions; else list unresolved, never guess (02) | L: `refine-issue.sh` prompt contract, README | asserted | Read the README, not the script's runtime behavior. |
-| Issue-spec shape (02, template) | L: README | asserted | |
+| Issue-spec shape (02, template) | L: README | asserted | Template: `agent-ready/templates/ISSUE-SPEC.md`. |
 | Baseline before changes; run commands, don't trust README (01) | H: RUNBOOK notes on an intentional red test; a stale RUNBOOK status | observed (stale doc), hypothesis (baseline practice) | The baseline step itself is the maintainer's addition. |
 | Work on branch/worktree, not live checkout (01, 03) | L, and the owner's own work notes ("do NOT work in that checkout") | observed | |
 | Default lane / deliberate lane; stop conditions (03) | H: autopilot and task-cycle skills; history shows one commit per task | observed | One `feat:` commit per task plus `docs:` tick commits. |
@@ -52,16 +52,18 @@ from that private history.
 | Record/replay cache; offline mocked tests + separate live smoke (05) | H: plan task 7, RUNBOOK ("43 passed, all mocked") | observed | |
 | Discovered API contract facts recorded with dates (05) | H: REQUIREMENTS confirmed facts | observed | Vendor-specific specifics removed. |
 | Evaluator adds value only when several inputs pass the gate (05) | H: demo notes, honest reflection; `experiments/05-evaluator/RESULTS.md` (2026-10-08) | observed (synthetic) | 8 grounded cases + 2 controls, one run each: evaluator 8/8 and 0 false endorsements; literal-value heuristic 6/8. Small, easy decoys, same model family as author; not shown on real tasks. |
-| State file: goal, facts, errors with dead_end, next_step; files from git (06) | L: README and the merged state-file PR | observed (design and code merged) | Effect on retry rates: the baseline metrics exist, the comparison had not been run. |
+| State file: goal, facts, errors with dead_end, next_step; files from git (06) | L: README and the merged state-file PR | observed (design and code merged) | Effect on retry rates: the baseline metrics exist, the comparison had not been run. Template: `agent-ready/templates/STATE.json`. |
 | Refresh takes the diff range from git; an option-like `--base` is rejected, never passed to git (06) | Reproduced with git 2.56 | observed | Before the fix, `--base=--output=x` made git write a file and exit 0 with an emptied list. Now exit 2 before the state file is touched; the range also follows `--end-of-options`. |
 | Commit after each discrete step (06) | L: prompt contract | asserted | |
 | Review-round cap of 3; fresh session; fix the class (06, 08) | L: `run-pr.sh` README; the owner's review-round policy | observed (implemented); hypothesis (that it improves outcomes) | |
 | Context hygiene list (06) | H: orchestration budget tactics | asserted | Written for cost; benefit unmeasured. |
+| Handoff brief: objective, done, repo and branch, uncommitted files, checks, next step (06) | none recorded | hypothesis | Template: `agent-ready/templates/HANDOFF.md`. No source was recorded when it was written; not yet checked against a real handoff. |
 | State side effects before starting shared-resource work (06) | L/A: a dated lesson in the owner's work notes (2026-09-20) | observed | A real incident recorded by the owner. |
 | Append-only dated records; mark superseded (06) | The owner's own work notes | observed | |
 | Null is unknown, never zero; baseline before optimizing (06) | L: session-quality metrics README | observed | |
-| Design doc + threat model skeletons (07) | A: `marketplace-design.md`, `marketplace-threat-model.md` headings | observed (structure) | Content quality not assessed. |
-| Results doc shape; record rejected options (07) | A: `phase0-results.md`, backlog entries | observed | |
+| Design doc + threat model skeletons (07) | A: `marketplace-design.md`, `marketplace-threat-model.md` headings | observed (structure) | Content quality not assessed. Template: `agent-ready/templates/DESIGN.md`. |
+| Results doc shape; record rejected options (07) | A: `phase0-results.md`, backlog entries | observed | Template: `agent-ready/templates/RESULTS.md`. |
+| Decision record: dated, with status accepted, superseded or rejected, and the rejected options (07, 11) | Applies the append-only, mark-superseded rule (06) and the record-rejected-options rule (07) to one file per decision | hypothesis | Template: `agent-ready/templates/docs/decision.md`. Not part of the module 11 run; not used on a real project. |
 | Study doc: what changes, things not to copy, verification rule (07) | A: `orca-study.md`, `phase6a-hermes-study.md` headings | observed | |
 | Backlog kinds, stable key (07) | A: `docs/backlog.yaml` header | observed | |
 | Track unrun live checks openly (07) | L/A: a verification-tracking issue | observed | |
@@ -69,7 +71,9 @@ from that private history.
 | All-gates-green definition; owner merges (08) | L/A: agent-loop standing rules; the owner's work notes | observed | Owner's rule. |
 | Full review before merge; incremental only when range is safe; do not mark truncated as complete (08) | A: `CI-CD.md` review section | asserted | |
 | CI principles: SHA not branch; no PR code with secrets; pin actions; rollback; verify auth where it runs (08) | A: `CI-CD.md` | asserted | Documented; not audited. |
+| PR description: what and why, how verified, what was not verified, risks and rollback, follow-ups (08) | none recorded | hypothesis | Template: `agent-ready/templates/PR-DESCRIPTION.md`. The not-verified section echoes the row on saying what was run versus only read (modules 01, 11). |
 | Weekly dependency updates and guard-script analysis (repository CI) | Owner decision, 2026-10-06 | asserted | Actions and pip manifests; SonarCloud on main and same-repository PRs, including Dependabot with its own secret. Missing-token notice permits setup before activation; live analysis remains unverified until owner setup. |
+| Every module and template in agent-ready/ is named by a row here, by module number or path, with a known evidence level (AGENTS.md, `tests/test_evidence_provenance.py`) | Owner decision on the provenance-check issue (2026-11-06); AGENTS.md "every rule has a reason and a source" | observed (16 templates had no row); hypothesis (that it stops unsourced rules) | Static check, no diff: a new rule in a module that already has rows passes. |
 
 ## First real use (2026-09-21): module 01 on another project
 
@@ -115,6 +119,10 @@ the template). The owner allowed the sensitive identifiers in that project, so t
 default the owner can override. Two answers disagreed with the generated docs (a key and a
 transaction boundary); only naming the constraint or a test can settle them.
 
+| Rule (module) | Source | Evidence | Notes |
+|---|---|---|---|
+| Docs-layer skeletons: an Answers / Read when / Basis header, then the sections each doc promises (11) | The module 11 run above: index, architecture, data-model, runtime and testing docs, and the findings from reviewing four of them | observed | One project, one run. Templates: `agent-ready/templates/docs/README.md`, `agent-ready/templates/docs/architecture.md`, `agent-ready/templates/docs/data-model.md`, `agent-ready/templates/docs/runtime.md`, `agent-ready/templates/docs/testing.md`. |
+
 ## Modules 09 and 10 (added 2026-09-21)
 
 Written for a planned task: adapt an existing scheduled data job, then build a new one modeled on
@@ -127,7 +135,7 @@ it. **Both are `hypothesis`.** Neither comes from the three source projects.
 | Keep the reference read-only; docs-only changes with owner OK (09) | Scope-discipline rules in 03 | hypothesis | |
 | Plan tasks cite their source file; commits say what they were modeled on (09) | none | hypothesis | Intended to help reviewers diff old vs new. |
 | Agent never gets production write access; owner runs prod (10) | Consistent with the owner-controls-irreversible-actions rule (03, 08), which is observed in L | hypothesis | The data-specific application is new. |
-| Dry-run default; idempotent; bounded with circuit breaker; per-batch transactions; captured before-values; parameterized SQL; no overlapping runs (10) | General data-job engineering practice; the dry-run/shadow/live staging echoes A smart-approvals | hypothesis | Check against your organization's standards. |
+| Dry-run default; idempotent; bounded with circuit breaker; per-batch transactions; captured before-values; parameterized SQL; no overlapping runs (10) | General data-job engineering practice; the dry-run/shadow/live staging echoes A smart-approvals | hypothesis | Check against your organization's standards. Template: `agent-ready/templates/DATA-JOB-SPEC.md`. |
 | Refuse to run with ambiguous environment (10) | The fail-closed principle in 04 (observed in A: empty allow-list) | hypothesis | |
 | Test list and staged rollout (10) | Adapted from 03/05 verification practice | hypothesis | |
 
@@ -279,7 +287,7 @@ scripts; no launcher; tier stays a difficulty label.
 | Under a `## Dependencies` heading, references run to the next heading of the same or a higher level; a loose list under a bare key or label is read across its blank lines; a key with nothing readable under it, or a key shape not recognised, holds the issue (selection, `select.py`) | Round-3 security re-review | observed | At e0698dc, `**Dependencies**` then a loose list `- #2`, blank, `- #1`, and `## Dependencies` then `### Blocking` then `- #1`, were read as `[#2]` and `[]`, and the issue was listed to dispatch with #1 open. So were `Dependencies (blocking): #1` and `Dependencies: -`. |
 | A `Dependencies: <value>` line also reads the list items below it; `none` with a reference under the same key holds the issue; a line of only references continues a list past a blank line; Unicode space or a byte-order mark before the key and `Dependency:` are recognised (selection, `select.py`) | Round-4 security re-review | observed | At ede797c, `Dependencies: #2` then `- #1`, and `Dependencies: none` then `- #1`, were read as `[#2]` and none, and the issue was listed to dispatch with #1 open. So were `**Dependencies**` then `#2`, blank, `#1`, a body starting with a byte-order mark, and `Dependency: #1`. |
 | After a `Dependencies: <value>` line, a line of its paragraph that names an issue, and the nested list under a sub-label item with nothing after its colon, are read (selection, `select.py`) | Round-5 security re-review | observed | At 61cd32d, `Dependencies: #2` then `Also #1`, and `Dependencies: #2` then `- Hard:` then `  - #1`, were read as `[#2]`, and the issue was listed to dispatch with #1 open. |
-| The `Dependencies` key is recognised as any list item (`1.`, `1)`, `+`, `•`, a checkbox), and a table, HTML or code key line with a digit holds the issue; a sub-label with nothing after its colon does not end the key; `none` under a sub-label over a nested reference, and a paragraph line with a digit but no reference, hold the issue (selection, `select.py`) | Round-6 security re-review | observed | At dafbaff, `1. Dependencies: #1`, `- [ ] Dependencies: #1`, `| Dependencies | #1 |`, `Dependencies: #2` then `Hard:` then `- #1`, and `Dependencies: #2` then `- Hard:`, `  - #2`, a blank, `- Soft:`, `  - #1`, were read as no dependency or `[#2]`, and the issue was listed to dispatch with #1 open. |
+| The `Dependencies` key is recognised as any list item (`1.`, `1)`, `+`, `•`, a checkbox), and a table, HTML or code key line with a digit holds the issue; a sub-label with nothing after its colon does not end the key; `none` under a sub-label over a nested reference, and a paragraph line with a digit but no reference, hold the issue (selection, `select.py`) | Round-6 security re-review | observed | At dafbaff, `1. Dependencies: #1`, `- [ ] Dependencies: #1`, `\| Dependencies \| #1 \|`, `Dependencies: #2` then `Hard:` then `- #1`, and `Dependencies: #2` then `- Hard:`, `  - #2`, a blank, `- Soft:`, `  - #1`, were read as no dependency or `[#2]`, and the issue was listed to dispatch with #1 open. |
 
 ## Box profiles (`box/profiles/`, added 2026-10-23)
 
@@ -346,7 +354,7 @@ a seed lesson needed that had no row yet.
 | A lessons registry: one file per lesson, its Rule linked to a row here, its check named, `open` when nothing enforces it (`box/lessons/`, `tests/test_lessons.py`) | The owner's decision on the registry issue (2026-10-22): a note records what went wrong but not whether anything now stops it | hypothesis | The test checks the links, paths, anchors and statuses. Nothing shows yet that a registry stops a lesson recurring. |
 | A tamper guard flags a change that deletes or skips tests, adds retries or edits gate config, and only the owner's approval passes it (STANDARD.md G, `templates/scripts/tamper_guard.py`) | STANDARD.md D failure story 4: a coverage floor lowered in passing | observed | `tests/test_box_bootstrap.py` flags each kind of change on a sample repo and passes it with `--approved`. |
 | A script's exit 1 is its verdict; a bad config or other error exits 2 (AGENTS.md, `agent-ready/scripts/`) | Script evidence item 2: `raise SystemExit("msg")` exited 1, the documented code for findings | observed | `tests/test_secret_guard.py` checks that bad config exits 2, not 1. |
-| A doc says what was run and what was only read; "verified" only for what ran (modules 01, 11) | First real use: a header claimed every command "run and verified"; the module 11 run: `Verified against: <sha>` on code only read | observed | Two runs. Module 01's template now marks commands run / not run and module 11's header says `Basis: read from code`. No check reads a generated doc for this, so the lesson is `open`. |
+| A doc says what was run and what was only read; "verified" only for what ran (modules 01, 11) | First real use: a header claimed every command "run and verified"; the module 11 run: `Verified against: <sha>` on code only read | observed | Two runs. Module 01's template now marks commands run / not run and module 11's header says `Basis: read from code`. No check reads a generated doc for this, so the lesson is `open`. Template: `agent-ready/templates/AGENTS.md`. |
 
 ## Excluded on purpose
 
