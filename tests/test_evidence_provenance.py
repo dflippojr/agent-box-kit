@@ -4,7 +4,8 @@ Pure stdlib.
 A rule row is a data row of an EVIDENCE.md table whose header has an `Evidence` column (the
 Finding | Change tables have none and are skipped). Tables are read as GFM reads them: every
 line after the delimiter row is a data row, with or without leading and trailing pipes, until a
-blank line or another block. For those rows:
+blank line or another block. A line that starts with a pipe outside any such table (say, under
+a header whose delimiter row has a different cell count) fails. For those rows:
 
 - Coverage. Each file under agent-ready/modules/ and agent-ready/templates/ must be named by at
   least one rule row. A module is named by its number in the row's first cell, in a parenthetical
@@ -35,7 +36,7 @@ LEVELS = ("observed", "asserted", "hypothesis")
 COVERED_DIRS = ("agent-ready/modules", "agent-ready/templates")
 REPO_DIRS = ("agent-ready/", "box/", "tests/", "experiments/", "ci/", ".github/")
 
-SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
+SEPARATOR_RE = re.compile(r"^:?-+:?$")
 PIPE_RE = re.compile(r"(?<!\\)\|")
 CODE_RE = re.compile(r"`([^`\n]+)`")
 PAREN_RE = re.compile(r"\(([^()]*)\)")
@@ -64,16 +65,17 @@ def ends_table(line):
     return not stripped or stripped.startswith(("#", ">", "```", "~~~"))
 
 
-def rule_rows(text):
-    """(line number, cells, evidence cell) for each data row of a table with an Evidence column.
+def parse_tables(text):
+    """(rows, table line numbers): every table's data rows as (line number, headers, cells).
 
     Tables follow GFM: a header line with a pipe, then a delimiter row with as many cells. Every
     later line is a data row, leading and trailing pipes optional, until a blank line or another
     block starts. A row line with no pipe at all is still a row, so it fails the Evidence check
-    instead of being skipped.
+    instead of being skipped. The line numbers cover headers, delimiters and rows.
     """
     lines = text.replace("\r\n", "\n").splitlines()
     rows = []
+    in_table = set()
     headers = None
     i = 0
     while i < len(lines):
@@ -85,16 +87,37 @@ def rule_rows(text):
             if (PIPE_RE.search(line) and i + 1 < len(lines)
                     and is_delimiter(lines[i + 1], len(cells))):
                 headers = cells
+                in_table.update((i + 1, i + 2))
                 i += 2
                 continue
             i += 1
             continue
-        cells = split_row(line)
+        rows.append((i + 1, headers, split_row(line)))
+        in_table.add(i + 1)
+        i += 1
+    return rows, in_table
+
+
+def rule_rows(text):
+    """(line number, cells, evidence cell) for each data row of a table with an Evidence column."""
+    rows = []
+    for lineno, headers, cells in parse_tables(text)[0]:
         if "Evidence" in headers:
             col = headers.index("Evidence")
-            rows.append((i + 1, cells, cells[col] if col < len(cells) else ""))
-        i += 1
+            rows.append((lineno, cells, cells[col] if col < len(cells) else ""))
     return rows
+
+
+def stray_table_lines(text):
+    """Line numbers of lines that start with a pipe but belong to no table GFM would render.
+
+    A header whose delimiter row has a different cell count is not a table, so its rows would
+    otherwise be skipped without a word.
+    """
+    in_table = parse_tables(text)[1]
+    lines = text.replace("\r\n", "\n").splitlines()
+    return [n for n, line in enumerate(lines, 1)
+            if line.lstrip().startswith("|") and n not in in_table]
 
 
 def module_numbers(first_cell):
@@ -149,7 +172,8 @@ def provenance_problems(root):
     text = (root / "EVIDENCE.md").read_text(encoding="utf-8")
     modules = module_files(root)
     named = set()
-    problems = []
+    problems = ["EVIDENCE.md:{}: table line outside a table (no matching delimiter row)".format(n)
+                for n in stray_table_lines(text)]
     for lineno, cells, evidence in rule_rows(text):
         where = "EVIDENCE.md:{}".format(lineno)
         if not level_ok(evidence):
