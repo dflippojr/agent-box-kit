@@ -9,7 +9,9 @@ blank line. Anything that could hide a table from the rendered page or show it d
 fails instead of being guessed at: a fence, an indented line or an HTML block (reading stops
 there), a pipe line outside a table (also in a blockquote or list item), a non-pipe line inside
 a table, a row with more cells than its header, and raw HTML outside a code span in a rule row.
-Write a literal pipe inside a cell, even in a code span, as `\\|`. For those rows:
+Lines end only at LF, CR or CRLF, as in GFM; a line holding any other control character or a
+Unicode line separator (U+0085, U+2028, U+2029) fails, and reading stops there. Write a literal
+pipe inside a cell, even in a code span, as `\\|`. For those rows:
 
 - Coverage. Each file under agent-ready/modules/ and agent-ready/templates/ must be named by at
   least one rule row. A module is named by its number in the row's first cell, in a parenthetical
@@ -52,14 +54,16 @@ FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 HTML_START_RE = re.compile(r"^ {0,3}<")
 CONTAINER_RE = re.compile(r"^(?:\s*(?:>|[-*+](?=\s)|\d{1,9}[.)](?=\s)))*\s*")
 INLINE_HTML_RE = re.compile(r"<[A-Za-z/!?]")
+LINE_END_RE = re.compile(r"\r\n|\r|\n")
+BAD_CHAR_RE = re.compile("[\x00-\x08\x0b-\x1f\x7f\x85\u2028\u2029]")
 
 
 def split_row(line):
     """Cells of a Markdown table line, splitting on unescaped pipes."""
-    body = line.strip()
+    body = line.strip(" \t")
     body = body[1:] if body.startswith("|") else body
     body = body[:-1] if body.endswith("|") and not body.endswith("\\|") else body
-    return [cell.strip() for cell in re.split(r"(?<!\\)\|", body)]
+    return [cell.strip(" \t") for cell in re.split(r"(?<!\\)\|", body)]
 
 
 def is_delimiter(line, width):
@@ -89,7 +93,10 @@ def scan(text):
 
     A table is a header line at column 0 that starts with a pipe, right after a blank line, a
     heading or the start of the file, then a delimiter row with as many cells. Its rows are the
-    following lines, each at column 0 and starting with a pipe, until a blank line. rows holds
+    following lines, each at column 0 and starting with a pipe, until a blank line. As in GFM,
+    lines end only at LF, CR or CRLF, a blank line holds only spaces and tabs, and cells are
+    trimmed of spaces and tabs only; a line with any other control character or U+0085, U+2028
+    or U+2029 stops reading, because those split lines in Python but not on the page. rows holds
     (line number, headers, cells) with cells cut to the header width. Every line that breaks
     this format is a problem and never a row: a non-pipe line inside a table (it also ends the
     table), a row with more cells than its header (GFM drops the extra cells), a pipe line
@@ -97,7 +104,7 @@ def scan(text):
     HTML block. Where such a block ends depends on GFM rules this check does not model, so
     reading stops at the first one: nothing after it is a row.
     """
-    lines = text.replace("\r\n", "\n").splitlines()
+    lines = LINE_END_RE.split(text)
     rows, problems = [], []
 
     def problem(n, why):
@@ -109,7 +116,12 @@ def scan(text):
     while i < len(lines):
         n, line = i + 1, lines[i]
         i += 1
-        if not line.strip():
+        bad = BAD_CHAR_RE.search(line)
+        if bad:
+            problem(n, "holds U+{:04X}, a control or line-separator character, so nothing after"
+                       " it is read".format(ord(bad.group())))
+            break
+        if not line.strip(" \t"):
             headers, can_start = None, True
             continue
         why = unsupported(line)
