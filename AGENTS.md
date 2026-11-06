@@ -14,6 +14,9 @@ This repo is documentation. Editing it well means keeping it short, honest and p
   sources there generically (an internal project, the owner's work notes), never by private name.
 - **Every rule has a reason and a source.** Add or change a rule together with an
   `EVIDENCE.md` row. Mark the evidence honestly: `observed`, `asserted` or `hypothesis`.
+  `tests/test_evidence_provenance.py` fails when a module or template in `agent-ready/` has no
+  row (by module number, or by the template's repo-relative path in backticks), when a row names
+  a path that does not exist, or when its evidence is not one of those three.
 - **Short.** A module a session cannot read quickly will not be followed. Prefer cutting to
   adding. Rule, why, how.
 - **Verify claims.** Do not describe what a tool or command does unless you ran it.
