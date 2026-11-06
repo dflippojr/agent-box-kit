@@ -8,7 +8,10 @@ delimiter row of the same width, then lines that each start with a pipe at colum
 blank line. Anything that could hide a table from the rendered page or show it differently
 fails instead of being guessed at: a fence, an indented line or an HTML block (reading stops
 there), a pipe line outside a table (also in a blockquote or list item), a non-pipe line inside
-a table, a row with more cells than its header, and raw HTML outside a code span in a rule row.
+a table, and a row with more cells than its header. A rule-row cell is read only when it splits
+exactly into text and one-backtick code spans (see unreadable): outside the spans, a backtick,
+a backslash other than `\\|`, a character reference, `<` or `[`/`]` makes the row a problem
+that names nothing, because escapes, HTML, links, images and footnotes can hide text.
 Lines end only at LF, CR or CRLF, as in GFM; a line holding any other control character or a
 Unicode line separator (U+0085, U+2028, U+2029) fails, and reading stops there. Write a literal
 pipe inside a cell, even in a code span, as `\\|`. For those rows:
@@ -53,7 +56,8 @@ MODULE_FILE_RE = re.compile(r"^(\d\d)-.+\.md$")
 FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 HTML_START_RE = re.compile(r"^ {0,3}<")
 CONTAINER_RE = re.compile(r"^(?:\s*(?:>|[-*+](?=\s)|\d{1,9}[.)](?=\s)))*\s*")
-INLINE_HTML_RE = re.compile(r"<[A-Za-z/!?]")
+SPAN_SPLIT_RE = re.compile(r"(`[^`]+`)")
+ENTITY_RE = re.compile(r"&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);")
 LINE_END_RE = re.compile(r"\r\n|\r|\n")
 BAD_CHAR_RE = re.compile("[\x00-\x08\x0b-\x1f\x7f\x85\u2028\u2029]")
 
@@ -156,6 +160,32 @@ def rule_rows(text):
     return [(n, headers, cells) for n, headers, cells in scan(text)[0] if "Evidence" in headers]
 
 
+def unreadable(value):
+    """Why a rule-row cell cannot be read exactly, or None.
+
+    The cell must split into plain text and one-backtick code spans with no backtick inside.
+    Outside the spans it may hold no backtick, no backslash except the table escape \\|, no
+    character reference, no < (raw HTML, autolinks) and no [ or ] (links, images, footnotes,
+    whose destinations, titles and labels do not show as text). Inside a span everything is
+    literal. A cell that breaks this is rejected rather than parsed, so an escape or markup
+    form this check does not model can never decide what a row names.
+    """
+    for k, part in enumerate(SPAN_SPLIT_RE.split(value)):
+        if k % 2:
+            continue
+        if "`" in part:
+            return "a backtick outside a plain one-backtick code span"
+        if re.search(r"\\(?!\|)", part):
+            return "a backslash escape other than \\|"
+        if ENTITY_RE.search(part):
+            return "a character reference"
+        if "<" in part:
+            return "raw HTML or an autolink"
+        if "[" in part or "]" in part:
+            return "link, image or footnote brackets"
+    return None
+
+
 def cell(headers, cells, name):
     """The row's cell under the header name ('' when the row is short)."""
     col = headers.index(name)
@@ -226,8 +256,10 @@ def provenance_problems(root):
         evidence = cell(headers, cells, "Evidence")
         if not level_ok(evidence):
             problems.append("{}: evidence {!r} is not {}".format(where, evidence, "/".join(LEVELS)))
-        if any(INLINE_HTML_RE.search(CODE_RE.sub("", c)) for c in cells):
-            problems.append("{}: raw HTML outside a code span can hide text".format(where))
+        why = next((w for w in map(unreadable, cells) if w), None)
+        if why:
+            problems.append("{}: holds {}, which this check cannot read exactly, so the row names"
+                            " nothing".format(where, why))
             continue
         for number in sorted(module_numbers(cells[0])):
             if number in modules:

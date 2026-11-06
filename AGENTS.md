@@ -18,7 +18,8 @@ This repo is documentation. Editing it well means keeping it short, honest and p
   row (by module number, or by the template's repo-relative path in backticks), when a row names
   a path that does not exist, or when its evidence is not one of those three. It reads only
   plain tables, so keep `EVIDENCE.md` free of code fences, indented lines and HTML, and write a
-  literal pipe in a cell, even inside backticks, as `\|`.
+  literal pipe in a cell, even inside backticks, as `\|`. In a rule row, use only plain text and
+  single-backtick code spans: no other escapes, character references, links, images or footnotes.
 - **Short.** A module a session cannot read quickly will not be followed. Prefer cutting to
   adding. Rule, why, how.
 - **Verify claims.** Do not describe what a tool or command does unless you ran it.
