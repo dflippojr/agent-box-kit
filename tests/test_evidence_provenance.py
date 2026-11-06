@@ -308,3 +308,23 @@ def test_a_line_with_no_pipe_inside_a_table_is_a_row_and_fails(tmp_path):
     problems = provenance_problems(root)
     assert len(problems) == 1
     assert problems[0].endswith(" is not observed/asserted/hypothesis")
+
+
+def test_a_table_whose_delimiter_does_not_match_its_header_fails(tmp_path):
+    root = copy_tree(tmp_path)
+    with (root / "EVIDENCE.md").open("a", encoding="utf-8") as f:
+        f.write("\n| Rule (module) | Source | Evidence | Notes |\n|---|---|---|\n"
+                "| X (02) | none | verified | |\n")
+    problems = provenance_problems(root)
+    assert len(problems) == 3
+    assert all("table line outside a table" in p for p in problems)
+
+
+def test_a_one_hyphen_delimiter_starts_a_table(tmp_path):
+    root = copy_tree(tmp_path)
+    with (root / "EVIDENCE.md").open("a", encoding="utf-8") as f:
+        f.write("\n| Rule (module) | Source | Evidence | Notes |\n|-|:-|-:|-|\n"
+                "| X (02) | none | verified | |\n")
+    problems = provenance_problems(root)
+    assert len(problems) == 1
+    assert problems[0].endswith(": evidence 'verified' is not observed/asserted/hypothesis")
