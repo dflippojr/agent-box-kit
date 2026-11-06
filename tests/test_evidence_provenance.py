@@ -2,16 +2,20 @@
 Pure stdlib.
 
 A rule row is a data row of an EVIDENCE.md table whose header has an `Evidence` column (the
-Finding | Change tables have none and are skipped). For those rows:
+Finding | Change tables have none and are skipped). Tables are read as GFM reads them: every
+line after the delimiter row is a data row, with or without leading and trailing pipes, until a
+blank line or another block. For those rows:
 
 - Coverage. Each file under agent-ready/modules/ and agent-ready/templates/ must be named by at
   least one rule row. A module is named by its number in the row's first cell, in a parenthetical
-  such as `(02)`, `(01, 03)`, `(02, template)` or `(modules 01, 11)`. Any file, module or template,
+  such as `(02)`, `(01, 03)`, `(02, template)` or `(modules 01, 11)`. A slash is not a
+  separator, so a date such as `(11/12)` names no module. Any file, module or template,
   is also named by its full repo-relative path in backticks anywhere in the row. A folder path
   does not cover the files in it, so one row cannot cover everything.
 - Paths exist. A backticked token that starts with one of this repo's top-level folders
-  (REPO_DIRS) must exist, after dropping a `::name` suffix. Bare names (`CI-CD.md`) and
-  paths in other repos (`templates/scripts/check.py`, relative to a box skill) are not checked.
+  (REPO_DIRS) must exist, after dropping a `::name` suffix; spaces are part of the path. Bare
+  names (`CI-CD.md`) and paths in other repos (`templates/scripts/check.py`, relative to a box
+  skill) are not checked.
 - Module numbers exist. A module number in a first-cell parenthetical must match an
   agent-ready/modules/NN-*.md file.
 - Evidence levels. The Evidence cell, with parentheticals removed and split on `;` and `,`, must
@@ -32,9 +36,10 @@ COVERED_DIRS = ("agent-ready/modules", "agent-ready/templates")
 REPO_DIRS = ("agent-ready/", "box/", "tests/", "experiments/", "ci/", ".github/")
 
 SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
+PIPE_RE = re.compile(r"(?<!\\)\|")
 CODE_RE = re.compile(r"`([^`\n]+)`")
 PAREN_RE = re.compile(r"\(([^()]*)\)")
-MODULE_GROUP_RE = re.compile(r"^(?:modules? )?\d\d(?:(?:, ?| and |/)\d\d)*(?:, [a-z ]+)?$")
+MODULE_GROUP_RE = re.compile(r"^(?:modules? )?\d\d(?:(?:, ?| and )\d\d)*(?:, [a-z ]+)?$")
 TWO_DIGITS_RE = re.compile(r"\b\d\d\b")
 MODULE_FILE_RE = re.compile(r"^(\d\d)-.+\.md$")
 
@@ -47,24 +52,48 @@ def split_row(line):
     return [cell.strip() for cell in re.split(r"(?<!\\)\|", body)]
 
 
+def is_delimiter(line, width):
+    """True when line is a table delimiter row (| --- | :-: |) with width cells."""
+    cells = split_row(line)
+    return "-" in line and len(cells) == width and all(SEPARATOR_RE.match(c) for c in cells)
+
+
+def ends_table(line):
+    """True when line ends a table: a blank line or the start of another block (GFM)."""
+    stripped = line.strip()
+    return not stripped or stripped.startswith(("#", ">", "```", "~~~"))
+
+
 def rule_rows(text):
-    """(line number, cells, evidence cell) for each data row of a table with an Evidence column."""
+    """(line number, cells, evidence cell) for each data row of a table with an Evidence column.
+
+    Tables follow GFM: a header line with a pipe, then a delimiter row with as many cells. Every
+    later line is a data row, leading and trailing pipes optional, until a blank line or another
+    block starts. A row line with no pipe at all is still a row, so it fails the Evidence check
+    instead of being skipped.
+    """
     lines = text.replace("\r\n", "\n").splitlines()
     rows = []
     headers = None
-    for i, line in enumerate(lines):
-        if not line.lstrip().startswith("|"):
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if headers is not None and ends_table(line):
             headers = None
+        if headers is None:
+            cells = split_row(line)
+            if (PIPE_RE.search(line) and i + 1 < len(lines)
+                    and is_delimiter(lines[i + 1], len(cells))):
+                headers = cells
+                i += 2
+                continue
+            i += 1
             continue
         cells = split_row(line)
-        if all(SEPARATOR_RE.match(c) for c in cells):
-            continue
-        if headers is None:
-            headers = cells
-            continue
         if "Evidence" in headers:
             col = headers.index("Evidence")
             rows.append((i + 1, cells, cells[col] if col < len(cells) else ""))
+        i += 1
     return rows
 
 
@@ -82,7 +111,7 @@ def repo_paths(row_text):
     paths = []
     for token in CODE_RE.findall(row_text):
         token = token.strip().split("::")[0]
-        if token.startswith(REPO_DIRS) and " " not in token:
+        if token.startswith(REPO_DIRS):
             paths.append(token)
     return paths
 
@@ -271,3 +300,11 @@ def test_a_template_with_a_space_is_covered_by_its_path(tmp_path):
     (root / "agent-ready" / "templates" / "NEW FILE.md").write_text("# New\n", encoding="utf-8")
     append_row(root, "| New (`agent-ready/templates/NEW FILE.md`) | none | hypothesis | |")
     assert provenance_problems(root) == []
+
+
+def test_a_line_with_no_pipe_inside_a_table_is_a_row_and_fails(tmp_path):
+    root = copy_tree(tmp_path)
+    append_row(root, "Stray text that GFM reads as one more row")
+    problems = provenance_problems(root)
+    assert len(problems) == 1
+    assert problems[0].endswith(" is not observed/asserted/hypothesis")
