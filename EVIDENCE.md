@@ -8,8 +8,8 @@ Evidence levels:
 - **hypothesis**: reasonable but untested; needs validation on real work.
 
 All three source projects were built with heavy AI assistance, including their docs. "Observed"
-means visible in the artifacts, not "proven to improve outcomes". Nothing here has been
-A/B-tested.
+means visible in the artifacts, not "proven to improve outcomes". One skill change has been
+A/B-tested (the unattended stop rule, below), with no detectable difference.
 
 Sources: **H** = a private project built for an internal hackathon, and the kit
 of skills it was built with; **L** = [agent-loop](https://github.com/dflippojr/agent-loop);
@@ -32,6 +32,8 @@ from that private history.
 | Work on branch/worktree, not live checkout (01, 03) | L, and the owner's own work notes ("do NOT work in that checkout") | observed | |
 | Default lane / deliberate lane; stop conditions (03) | H: autopilot and task-cycle skills; history shows one commit per task | observed | One `feat:` commit per task plus `docs:` tick commits. |
 | Effort ceiling per task, stop and report if exceeded (03) | H: implementer and autopilot skill briefs | asserted | Written in skills; adherence not verified. |
+| When the instructions say no human will answer, write the question where the owner will see it (the issue), end the run and say where; do not guess or end on a question (SKILL.md rule 4, 03) | A skills audit of agent-ready: asking one question suits an attended session, not an unattended worker | hypothesis | Two skill-eval runs on 2026-11-06, `experiments/08-unattended-stop-rule/RESULTS.md`: no detectable difference. A passed the unattended task 3/3 in both runs, and the skill was loaded in 0 of 12 sessions on it, so the rule was never read there. |
+| The description names the core trigger, engineering work on an existing repo that a human owner will review, and says what the skill is not for (SKILL.md) | The same audit: eleven triggers and no not-for clause | observed (trigger rates); hypothesis (that it picks better) | `experiments/08-unattended-stop-rule/RESULTS.md`. Near-miss picks were 0/15 for both versions in both runs. The first trimmed version lost every pick on the plan task (3/3 to 0/3); with requirements named again, task picks were 6/18 for both. `tests/test_skill_consistency.py` checks the not-for clause and that the module table is in numeric order. |
 | Red before green for tests (03) | H: implementer skill | asserted | |
 | Never weaken a Verify (03) | H: autopilot rules | asserted | |
 | Machine-readable result line; confirm from git, not self-report (03) | L: README sentinels; a known quirk where one agent CLI opened a PR despite the rule and printed result lines inconsistently | observed | |
@@ -250,7 +252,7 @@ and trigger runner (`scripts/run_eval.py`), and the agent CLI's `plugin eval` co
 
 | Rule (where) | Source | Evidence | Notes |
 |---|---|---|---|
-| Judge a skill change by running A and B on a task set, not by reading it (SKILL.md) | The issue | hypothesis | Not yet run on a real change: the proof run in `experiments/06-skill-eval/run.md` waits for the owner, because the building session could not start nested agent sessions. |
+| Judge a skill change by running A and B on a task set, not by reading it (SKILL.md) | The issue | hypothesis | First run on a real change on 2026-11-06 (`experiments/08-unattended-stop-rule/RESULTS.md`): no detectable difference, and it caught a description edit that lost every pick on one task. The proof run in `experiments/06-skill-eval/run.md` (harmful and no-op variants) has still not been run. |
 | Sessions reuse box-audit's isolation: empty home holding only the skill, scratch workspace, reduced environment, safe work root (`runner.py`) | box-audit's `judge.py` | observed (synthetic) | Tests run a stand-in CLI and check it sees only the skill and the copied login, not the owner's instruction file or environment. Startup context only, not a sandbox. |
 | Deterministic checks first, and the judge does not see them (`runner.py`, `blind.py`) | The standard's "do not ask the model to judge itself" | asserted | Keeps the two signals separate, so a check failure is not counted twice. |
 | The judge sees X and Y in a seeded random order and is never told versions exist (`blind.py`, `judge-prompt.md`) | skill-creator's blind comparator, which labels outputs without saying which skill made them | observed (synthetic) | With a stand-in judge that always picks X on a tie, the order kept a no-op change at no detectable difference (seed 7, 15 pairs). A real judge's position bias is unmeasured. |
