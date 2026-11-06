@@ -65,9 +65,10 @@ description holds "will review: changing", and a strict parser (PyYAML 6.0.3) st
 - Replaying that fallback, with PyYAML in place of the harness's own parser, gives name
   `agent-ready` and a description character for character equal to the file's text for both
   9043bee (315 characters) and 1b4784b (332 characters).
-- The runs agree. 9043bee and 1b4784b differ only in the word "requirements" in the
-  description, and `plan-risky-job` picks went from 0/3 to 3/3. A session that never saw B's
-  description could not have reacted to that word.
+- The runs are consistent with this. 9043bee and 1b4784b differ only in the word
+  "requirements" in the description, and `plan-risky-job` picks went from 0/3 to 3/3. A loader
+  that dropped the metadata would not respond to that word. This is corroboration, not proof:
+  the two runs had different seeds and N=3.
 
 The description is now quoted, so it parses as written (`tests/test_skill_front_matter.py`).
 The parsed text equals what the runs saw, so the committed reports stand. The current SKILL.md
