@@ -227,19 +227,57 @@ def append_row(root, row):
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def add_module(root):
+    """Add a module file under a number no module in root uses; return (number, missing-row problem)."""
+    number = "12"
+    path = "agent-ready/modules/{}-new-module.md".format(number)
+    (root / path).write_text("# {}\n".format(number), encoding="utf-8")
+    return number, "{}: no EVIDENCE.md row names it".format(path)
+
+
 def test_a_new_module_with_no_row_fails(tmp_path):
     root = copy_tree(tmp_path)
     assert provenance_problems(root) == []
-    (root / "agent-ready" / "modules" / "12-new-module.md").write_text("# 12\n", encoding="utf-8")
-    assert provenance_problems(root) == [
-        "agent-ready/modules/12-new-module.md: no EVIDENCE.md row names it"]
+    _, missing = add_module(root)
+    assert provenance_problems(root) == [missing]
 
 
 def test_a_new_module_passes_once_a_row_names_its_number(tmp_path):
     root = copy_tree(tmp_path)
-    (root / "agent-ready" / "modules" / "12-new-module.md").write_text("# 12\n", encoding="utf-8")
-    append_row(root, "| A new rule (12) | none | hypothesis | |")
+    number, _ = add_module(root)
+    append_row(root, "| A new rule ({}) | none | hypothesis | |".format(number))
     assert provenance_problems(root) == []
+
+
+def test_the_new_module_controls_survive_a_real_module_12(tmp_path):
+    """A valid module 12 with its row, added later, must not break the controls that add a module."""
+    root = copy_tree(tmp_path)
+    (root / "agent-ready" / "modules" / "12-new-module.md").write_text("# 12\n", encoding="utf-8")
+    append_row(root, "| A real rule (12) | none | hypothesis | |")
+    assert provenance_problems(root) == []
+    number, missing = add_module(root)
+    assert number != "12"
+    assert provenance_problems(root) == [missing]
+
+
+def test_two_modules_sharing_a_number_fail(tmp_path):
+    root = copy_tree(tmp_path)
+    for name in ("12-one.md", "12-two.md"):
+        (root / "agent-ready" / "modules" / name).write_text("# 12\n", encoding="utf-8")
+    append_row(root, "| A rule (12) | none | hypothesis | |")
+    assert provenance_problems(root) == [
+        "agent-ready/modules: 12-one.md and 12-two.md share module number 12"]
+
+
+def test_a_table_in_a_code_fence_is_not_evidence(tmp_path):
+    """A fenced example row is a code sample, not a rule row, so it covers no module."""
+    root = copy_tree(tmp_path)
+    number, missing = add_module(root)
+    for fence in ("```", "~~~~"):
+        with (root / "EVIDENCE.md").open("a", encoding="utf-8") as f:
+            f.write("\n{0}markdown\n| Rule (module) | Source | Evidence | Notes |\n|---|---|---|---|\n"
+                    "| Proposed example ({1}) | none | hypothesis | |\n{0}\n".format(fence, number))
+        assert provenance_problems(root) == [missing], fence
 
 
 def test_a_new_template_with_no_row_fails(tmp_path):
@@ -257,10 +295,9 @@ def test_a_folder_path_does_not_cover_its_files(tmp_path):
 
 def test_a_date_in_a_rule_does_not_name_a_module(tmp_path):
     root = copy_tree(tmp_path)
-    (root / "agent-ready" / "modules" / "12-new-module.md").write_text("# 12\n", encoding="utf-8")
-    append_row(root, "| A rule (owner decision, 2026-10-12) | none | hypothesis | |")
-    assert provenance_problems(root) == [
-        "agent-ready/modules/12-new-module.md: no EVIDENCE.md row names it"]
+    number, missing = add_module(root)
+    append_row(root, "| A rule (owner decision, 2026-10-{}) | none | hypothesis | |".format(number))
+    assert provenance_problems(root) == [missing]
 
 
 def test_a_row_naming_a_missing_path_fails(tmp_path):
@@ -305,10 +342,9 @@ def test_a_row_without_a_leading_pipe_is_still_checked(tmp_path):
 
 def test_a_slash_date_in_a_rule_does_not_name_a_module(tmp_path):
     root = copy_tree(tmp_path)
-    (root / "agent-ready" / "modules" / "12-new-module.md").write_text("# 12\n", encoding="utf-8")
-    append_row(root, "| Policy reviewed (11/12) | owner notes | asserted | |")
-    assert provenance_problems(root) == [
-        "agent-ready/modules/12-new-module.md: no EVIDENCE.md row names it"]
+    number, missing = add_module(root)
+    append_row(root, "| Policy reviewed (11/{}) | owner notes | asserted | |".format(number))
+    assert provenance_problems(root) == [missing]
 
 
 def test_a_missing_path_with_a_space_fails(tmp_path):
