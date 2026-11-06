@@ -540,3 +540,53 @@ def test_a_valid_workflow_reference_survives_the_fixture_copy(tmp_path):
     root = copy_tree(tmp_path)
     append_row(root, "| CI runs the suite (02) | none | observed | `.github/workflows/tests.yml` |")
     assert provenance_problems(root) == []
+
+
+# ----- line endings and whitespace as GFM reads them (review round 4) ------------------------
+
+SEPARATORS = [" ", " ", "\x85", "\v", "\f", "\x1c", "\x1d", "\x1e"]
+
+
+def write_raw(root, text):
+    """Append text to the copied EVIDENCE.md byte for byte, with no newline translation."""
+    with (root / "EVIDENCE.md").open("a", encoding="utf-8", newline="") as f:
+        f.write(text)
+
+
+def test_a_non_markdown_line_separator_fails_closed(tmp_path):
+    """GFM ends lines only at LF, CR and CRLF, so one physical row must not become two."""
+    uncaught = []
+    for i, ch in enumerate(SEPARATORS):
+        root = copy_tree(tmp_path / str(i))
+        number, missing = add_module(root)
+        append_row(root, "| Innocent | none | hypothesis | |" + ch
+                   + "| Hidden ({}) | none | hypothesis | |".format(number))
+        problems = provenance_problems(root)
+        flagged = any("U+{:04X}".format(ord(ch)) in p for p in problems)
+        if missing not in problems or not flagged:
+            uncaught.append("U+{:04X}".format(ord(ch)))
+    assert uncaught == []
+
+
+def test_a_line_of_non_ascii_space_is_not_blank(tmp_path):
+    """A no-break space line does not end a table in GFM, so no new rule table starts after it."""
+    root = copy_tree(tmp_path)
+    number, missing = add_module(root)
+    write_raw(root, "\n| Finding | Change |\n|---|---|\n| a | b |\n \n" + RULE_TABLE
+              + "| Example ({}) | none | hypothesis | |\n".format(number))
+    assert missing in provenance_problems(root)
+
+
+def test_a_delimiter_padded_with_non_ascii_space_starts_no_table(tmp_path):
+    root = copy_tree(tmp_path)
+    number, missing = add_module(root)
+    write_raw(root, "\n| Rule (module) | Source | Evidence | Notes |\n| --- |---|---|---|\n"
+              "| Example ({}) | none | hypothesis | |\n".format(number))
+    assert missing in provenance_problems(root)
+
+
+def test_a_crlf_evidence_file_reads_the_same(tmp_path):
+    root = copy_tree(tmp_path)
+    text = (root / "EVIDENCE.md").read_text(encoding="utf-8")
+    (root / "EVIDENCE.md").write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+    assert provenance_problems(root) == []
