@@ -602,3 +602,51 @@ def test_a_crlf_evidence_file_reads_the_same(tmp_path):
     text = (root / "EVIDENCE.md").read_text(encoding="utf-8")
     (root / "EVIDENCE.md").write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
     assert provenance_problems(root) == []
+
+
+# ----- cells are read only when their code spans parse exactly (review round 5) --------------
+
+def cell_tricks(n):
+    """Rule rows that name module n, or its file, only through escapes or markup around code
+    spans. Each hides the reference from the page or makes the spans ambiguous."""
+    path = "agent-ready/modules/{}-new-module.md".format(n)
+    first = [
+        "Rule \\`<!-- ({}) -->\\`".format(n),          # escaped backticks around a comment
+        "Rule \\\\`x` ({})".format(n),                  # escaped backslash before a span
+        "Rule ``x`` ({})".format(n),                    # double-backtick span
+        "Rule ` ({})".format(n),                        # unmatched backtick
+        "Rule &#96;<!-- ({}) -->&#96;".format(n),       # entity backticks around a comment
+        "Rule \\`{}\\`".format(path),                   # escaped backticks around a path
+        "Rule [see](https://example.com \"({})\")".format(n),  # link title
+        "Rule ![({})](x.png)".format(n),                # image alt
+        "Rule [x][({})]".format(n),                     # reference label
+    ]
+    notes = [
+        "[x](`{}`)".format(path),                       # path as a link destination
+        "[^`{}`]".format(path),                         # path as a footnote label
+    ]
+    return (["| {} | none | hypothesis | |".format(c) for c in first]
+            + ["| Rule | none | hypothesis | {} |".format(c) for c in notes])
+
+
+def test_escaped_backticks_around_a_comment_hide_nothing(tmp_path):
+    """Codex r5: the escaped backticks are literal, so the comment hides (12) on the page."""
+    root = copy_tree(tmp_path)
+    number, missing = add_module(root)
+    append_row(root, "| Rule \\`<!-- ({}) -->\\` | none | hypothesis | |".format(number))
+    problems = provenance_problems(root)
+    assert len(problems) == 2 and problems[1] == missing
+    assert "cannot read exactly" in problems[0]
+
+
+def test_escapes_and_markup_around_code_spans_fail_closed(tmp_path):
+    uncaught = []
+    for i, row in enumerate(cell_tricks("NN")):
+        root = copy_tree(tmp_path / str(i))
+        number, missing = add_module(root)
+        row = row.replace("NN", number)
+        append_row(root, row)
+        problems = provenance_problems(root)
+        if missing not in problems or not any("cannot read exactly" in p for p in problems):
+            uncaught.append(row)
+    assert uncaught == []
