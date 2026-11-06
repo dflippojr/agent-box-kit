@@ -2060,6 +2060,33 @@ def test_skill_front_matter_and_links():
         assert "Exit codes:" in header and "Stdlib only" in header, name
 
 
+# The skill is installed by symlinking its folder into a skills folder elsewhere (SKILL.md). Its
+# paths are relative to the checkout, so they must resolve through the link the way the OS
+# follows it: the link first, then `..`. A copy, or a lexical `..`, would miss STANDARD.md.
+# Windows applies `..` lexically before following the link, so this holds on POSIX only.
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows resolves .. before the symlink")
+def test_skill_paths_resolve_from_a_symlinked_install(tmp_path):
+    skills = tmp_path / "home" / "skills"
+    skills.mkdir(parents=True)
+    linked = skills / "box-audit"
+    os.symlink(str(SKILL), str(linked), target_is_directory=True)
+    text = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+    paths = {m.split("#")[0] for m in re.findall(r"\]\(([^)\s]+)\)", text)
+             if not m.startswith(("#", "http://", "https://"))}
+    paths |= set(re.findall(r"(?<![\w./-])((?:\.\./)+[\w./-]*\w|scripts/\w+\.py)", text))
+    paths.discard("")
+    assert {"../../STANDARD.md", "scripts/judge.py", "scripts/audit.py",
+            "../../profiles/profile.py"} <= paths, paths
+    for rel in sorted(paths):
+        through_link = os.path.join(str(linked), rel)
+        assert os.path.exists(through_link), rel
+        assert os.path.samefile(through_link, str(SKILL / rel)), rel
+    with open(os.path.join(str(linked), "../../STANDARD.md"), encoding="utf-8") as f:
+        assert f.read() == (ROOT / "box" / "STANDARD.md").read_text(encoding="utf-8")
+    # The check is not passing by accident: read lexically, the link's `../..` leaves the tree.
+    assert not os.path.exists(os.path.normpath(os.path.join(str(linked), "../../STANDARD.md")))
+
+
 def test_skill_is_vendor_neutral():
     names = ["Claude", "Codex", "Cursor", "OpenAI", "Anthropic", "GPT", "Copilot", "Gemini"]
     for path in SKILL.rglob("*"):

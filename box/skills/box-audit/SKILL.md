@@ -15,6 +15,10 @@ are gathered by scripts, not by browsing. The scoring runs in a fresh session th
 repo owner's personal agent instructions. A script, not the judge, checks the card's format and
 recomputes the overall score.
 
+Install it by symlinking this folder into your skills folder, not by copying it: its paths, such
+as `../../STANDARD.md` and `scripts/judge.py`, are relative to the checkout, and only a POSIX
+symlink keeps them resolving from the link.
+
 ## Inputs
 
 - **REPO**: a local git checkout. It is only read.
@@ -68,16 +72,9 @@ recomputes the overall score.
 
    It runs `collect.py` (evidence, read-only), `judge.py prepare` and `judge.py run` (scoring),
    then `card.py check`. A card that fails the check goes back to the judge once with the
-   problems. Exit 0 means the card is written and valid. Nothing inside the audited checkout
-   is written, and a `<REPO>` below its top stands for the whole checkout. So an `--out`
-   inside it (including the default current directory), a card path that links into it or has
-   other hard links, a `TMPDIR`, `TEMP`, `TMP` or `--work-root` inside it, a `--copy-home`
-   file that resolves into it or has other hard links, and (without `-B`) a
-   `PYTHONPYCACHEPREFIX` inside it each exit 2 before the judge runs. Git runs without the
-   caller's `GIT_*` variables and with trace2 output off, and the judge's cleanup of folders a
-   killed run left behind deletes only folders it marked as its own, never one that is, holds
-   or sits inside the checkout or any other git checkout. `judge.py run` and `judge.py probe`
-   sweep the same way.
+   problems. Exit 0 means the card is written and valid. `audit.py` refuses (exit 2) any output,
+   temp or cache path inside the checkout; run it with `python -B` from outside the checkout.
+   Its docstring lists each refusal.
 
    If your harness starts isolated sessions its own way, use `--bundle-only <folder>` instead of
    the judge command, give the judge `<folder>/prompt.md` as its whole input, save its answer as
@@ -144,11 +141,6 @@ evidence as partial at best.
   code or fetch. A tracked file that is a symlink or junction, or sits under one, is listed but
   not read, since it could point at the owner's own instructions. Running the gate yourself, which the standard asks for W, is a step for the
   person acting on the card, not for the audit.
-- `-B` is part of the read-only promise. Python's startup runs before the script's first line
-  and can write bytecode: under a `PYTHONPYCACHEPREFIX`, or beside a Python installed inside the
-  checkout (a virtual environment in it, say). Without `-B`, `profile.py` and `audit.py` refuse
-  a prefix inside the checkout, but they cannot undo what startup already wrote, and they do not
-  detect a Python installed inside the checkout. Use a Python from outside the checkout.
 - Git sees none of the caller's `GIT_*` variables, so a `safe.directory` set only in a file
   named by `GIT_CONFIG_GLOBAL` does not apply; git then reads the default global config.
 - Judge isolation covers startup context, not the filesystem: the judge could still read a path
