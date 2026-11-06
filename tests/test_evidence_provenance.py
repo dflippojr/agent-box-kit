@@ -240,3 +240,34 @@ def test_compound_evidence_values_pass():
                  "observed (stale doc), hypothesis (baseline practice)",
                  "observed (synthetic) for the files; hypothesis for the answer convention"):
         assert level_ok(good), good
+
+
+def test_a_row_without_a_leading_pipe_is_still_checked(tmp_path):
+    root = copy_tree(tmp_path)
+    append_row(root, "Bad rule (02) | none | verified |")
+    problems = provenance_problems(root)
+    assert len(problems) == 1
+    assert problems[0].endswith(": evidence 'verified' is not observed/asserted/hypothesis")
+
+
+def test_a_slash_date_in_a_rule_does_not_name_a_module(tmp_path):
+    root = copy_tree(tmp_path)
+    (root / "agent-ready" / "modules" / "12-new-module.md").write_text("# 12\n", encoding="utf-8")
+    append_row(root, "| Policy reviewed (11/12) | owner notes | asserted | |")
+    assert provenance_problems(root) == [
+        "agent-ready/modules/12-new-module.md: no EVIDENCE.md row names it"]
+
+
+def test_a_missing_path_with_a_space_fails(tmp_path):
+    root = copy_tree(tmp_path)
+    append_row(root, "| Gone (02) | none | hypothesis | `agent-ready/templates/GONE FILE.md` |")
+    problems = provenance_problems(root)
+    assert len(problems) == 1
+    assert problems[0].endswith(": names agent-ready/templates/GONE FILE.md, which does not exist")
+
+
+def test_a_template_with_a_space_is_covered_by_its_path(tmp_path):
+    root = copy_tree(tmp_path)
+    (root / "agent-ready" / "templates" / "NEW FILE.md").write_text("# New\n", encoding="utf-8")
+    append_row(root, "| New (`agent-ready/templates/NEW FILE.md`) | none | hypothesis | |")
+    assert provenance_problems(root) == []
