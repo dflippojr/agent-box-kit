@@ -17,6 +17,7 @@ import pytest
 
 from conftest import git, run, write
 from test_box_standard import overall as standard_overall
+from test_box_standard import proven as standard_proven
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILL = ROOT / "box" / "skills" / "box-audit"
@@ -1236,6 +1237,51 @@ def test_score_command():
     assert script("card.py", "check").returncode == 2
 
 
+def test_proven_mixes_every_mark():
+    """✓ and ★ count 1, ~ 0.5, ✗ 0; n/a leaves the average (issue #19)."""
+    assert card.proven(["✓", "~", "✗", "★", "–", "~"]) == "6.0"  # 3 / 5
+    assert card.proven(["✓", "~", "✗", "~", "–", "~"]) == "5.0"  # 2.5 / 5
+    assert card.proven(["✓", "–", "~", "✗", "–", "★"]) == "6.3"  # 2.5 / 4, half rounded up
+    assert card.proven(["✗"] * 6) == "0.0"
+    assert card.proven(["★"] * 5 + ["–"]) == "10.0"
+
+
+def test_proven_matches_the_standards_definition_for_every_row():
+    for marks in itertools.product("✗~✓★–", repeat=6):
+        if all(m == "–" for m in marks):
+            continue
+        assert float(card.proven(list(marks))) == standard_proven(list(marks)), marks
+
+
+def test_upgrading_a_mark_never_lowers_proven():
+    ladder = "✗~✓★"
+    for marks in itertools.product("✗~✓★–", repeat=6):
+        for i, mark in enumerate(marks):
+            if mark in "★–":
+                continue
+            better = list(marks)
+            better[i] = ladder[ladder.index(mark) + 1]
+            assert float(card.proven(better)) >= float(card.proven(list(marks))), marks
+
+
+def test_card_proven_line_is_checked_when_present():
+    marks = ["✓", "~", "✗", "~", "–", "~"]
+    text = make_card(marks)
+    assert not card.check(text)  # a card without the line, from a harness judge, still passes
+    stamped = card.stamp_proven(text)
+    assert "\n- Proven: 5.0\n" in stamped and not card.check(stamped)
+    assert card.stamp_proven(stamped) == stamped
+    wrong = stamped.replace("- Proven: 5.0", "- Proven: 8.0")
+    assert any("Proven 8.0 does not follow" in p for p in card.check(wrong))
+    assert card.stamp_proven(wrong) == stamped  # the script's value replaces the judge's
+
+
+def test_proven_command():
+    r = script("card.py", "proven", "G ✓ · R ~ · J ✗ · W ★ · P – · D ~ → 8")
+    assert r.returncode == 0 and r.stdout.strip() == "6.0"
+    assert script("card.py", "proven", "G ✓ · R ~").returncode == 2
+
+
 # ----- judge isolation -----------------------------------------------------------------------
 
 FAKE_CLI = r'''
@@ -1454,7 +1500,8 @@ def test_audit_report_writes_only_the_card(box_repo, owner, monkeypatch, capsys)
     assert snapshot(box_repo) == before
     cards = list(out.iterdir())
     assert [c.name for c in cards] == ["box-audit-repo-2026-10-19.md"]
-    assert cards[0].read_text(encoding="utf-8") == good.strip() + "\n"
+    assert cards[0].read_text(encoding="utf-8") == \
+        good.strip().replace("→ 8`\n", "→ 8`\n- Proven: 5.0\n") + "\n"
     prompt = (state / "prompt0.md").read_text(encoding="utf-8")
     assert "Host evidence: unavailable (skipped with --no-remote)" in prompt
     assert "## Proving a change" in prompt  # the audited repo's proof rules reach the judge
@@ -1653,7 +1700,7 @@ def test_report_run_in_a_fresh_process_leaves_the_checkout_unchanged(repo, owner
     assert after == before
     assert (repo / "box-audit-app-2026-10-19.md").read_text(encoding="utf-8") == "an old card\n"
     assert (out / "box-audit-app-2026-10-19.md").read_text(encoding="utf-8") == \
-        good.strip() + "\n"
+        card.stamp_proven(good.strip()) + "\n"
 
 
 # Each case below is one way the caller's machine could make report mode change the checkout.
