@@ -682,3 +682,46 @@ def test_escapes_and_markup_around_code_spans_fail_closed(tmp_path):
         if missing not in problems or not any("cannot read exactly" in p for p in problems):
             uncaught.append(row)
     assert uncaught == []
+
+
+# ----- the Evidence header must be exact (owner decision on #16, final round) ----------------
+
+BAD_EVIDENCE_HEADERS = [
+    "**Evidence**", "*Evidence*", "_Evidence_", "~~Evidence~~", "`Evidence`", "Evidence:",
+    "Evidence.", "Evidence (level)", "evidence", "EVIDENCE", "<b>Evidence</b>",
+    "Evid<!-- -->ence", "Evid&#101;nce", "&#69;vidence", "Evid\\ence", "[Evidence](x)",
+    "Еvidence", "Ｅvidence",
+]
+
+
+def test_an_inexact_evidence_header_rejects_the_table(tmp_path):
+    """A header that is not exactly Evidence must not silently turn a rule table into one whose
+    rows are skipped: the table is rejected and its rows name nothing."""
+    uncaught = []
+    for i, header in enumerate(BAD_EVIDENCE_HEADERS):
+        root = copy_tree(tmp_path / str(i))
+        number, missing = add_module(root)
+        write_raw(root, "\n| Rule (module) | Source | {} | Notes |\n|---|---|---|---|\n"
+                  "| Example ({}) | none | hypothesis | |\n".format(header, number))
+        problems = provenance_problems(root)
+        if missing not in problems or not any("header" in p and "rejected" in p for p in problems):
+            uncaught.append(header)
+    assert uncaught == []
+
+
+def test_two_evidence_columns_reject_the_table(tmp_path):
+    root = copy_tree(tmp_path)
+    number, missing = add_module(root)
+    write_raw(root, "\n| Rule (module) | Evidence | Evidence | Notes |\n|---|---|---|---|\n"
+              "| Example ({}) | hypothesis | verified | |\n".format(number))
+    problems = provenance_problems(root)
+    assert missing in problems
+    assert any("header" in p and "rejected" in p for p in problems)
+
+
+def test_an_exact_evidence_header_still_reads(tmp_path):
+    root = copy_tree(tmp_path)
+    number, _ = add_module(root)
+    write_raw(root, "\n| Rule (module) | Source | Evidence | Notes |\n|---|---|---|---|\n"
+              "| Example ({}) | none | hypothesis | |\n".format(number))
+    assert provenance_problems(root) == []
