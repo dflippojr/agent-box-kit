@@ -32,11 +32,22 @@ Usage:
 
 If the card fails `card.py check`, the judge gets one more attempt with the problems listed.
 
-Run it with `python -B`. Interpreter startup runs before the first line and can write bytecode
-under a PYTHONPYCACHEPREFIX; without -B, a prefix inside the checkout is refused (exit 2), since
-startup may already have written there. The script turns bytecode off at its first statement.
-The judge's sweep of folders left by a killed run never deletes one overlapping the checkout,
-and a --copy-home file whose refreshed copy would be written back into it is refused.
+Refusals. Nothing inside the audited checkout is written, and a REPO below its top stands for
+the whole checkout. Each of these exits 2 before the judge runs: an --out inside the checkout
+(including the default current directory); a card path that links into it or has other hard
+links; a TMPDIR, TEMP, TMP or --work-root inside it; a --copy-home file that resolves into it or
+has other hard links (its refreshed copy would be written back into the checkout); and, without
+-B, a PYTHONPYCACHEPREFIX inside it. Git runs without the caller's GIT_* variables and with
+trace2 output off. The judge's cleanup of folders a killed run left behind deletes only folders
+it marked as its own, never one that is, holds or sits inside the checkout or any other git
+checkout; `judge.py run` and `judge.py probe` sweep the same way.
+
+Bytecode. Run it with `python -B`, using a Python from outside the checkout: -B is part of the
+read-only promise. Interpreter startup runs before the script's first line and can write
+bytecode under a PYTHONPYCACHEPREFIX, or beside a Python installed inside the checkout (a
+virtual environment in it, say). Without -B, a prefix inside the checkout is refused (exit 2),
+but what startup already wrote cannot be undone, and a Python installed inside the checkout is
+not detected. The script turns bytecode off at its first statement.
 
 Exit codes: 0 card written and valid (or bundle written); 1 judge failed, or the card is still
 invalid after the retry (it is written anyway, with the problems printed); 2 usage error.
