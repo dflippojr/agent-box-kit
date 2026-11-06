@@ -2,7 +2,9 @@
 Pure stdlib.
 
 A rule row is a data row of an EVIDENCE.md table whose header has an `Evidence` column (the
-Finding | Change tables have none and are skipped). Only rows of plain tables count, read in the
+Finding | Change tables have none and are skipped). That header cell must be exactly `Evidence`:
+a header with a near miss (other case, markup, punctuation, HTML, references, non-ASCII) or two
+Evidence cells rejects its table (see header_problem), so a typo cannot hide rows from the check. Only rows of plain tables count, read in the
 format EVIDENCE.md uses (see scan): a header at column 0 after a blank line or heading, a
 delimiter row of the same width, then lines that each start with a pipe at column 0, until a
 blank line. Anything that could hide a table from the rendered page or show it differently
@@ -115,6 +117,7 @@ def scan(text):
         problems.append("EVIDENCE.md:{}: {}; the check reads plain tables only".format(n, why))
 
     headers = None
+    rejected = None
     can_start = True
     i = 0
     while i < len(lines):
@@ -141,18 +144,45 @@ def scan(text):
             if len(cells) > len(headers):
                 problems.append("EVIDENCE.md:{}: row has {} cells, its table has {}".format(
                     n, len(cells), len(headers)))
-            rows.append((n, headers, cells[:len(headers)]))
+            if not rejected:
+                rows.append((n, headers, cells[:len(headers)]))
             continue
         cells = split_row(line)
         if (can_start and line.startswith("|") and i < len(lines)
                 and is_delimiter(lines[i], len(cells))):
             headers = cells
+            rejected = header_problem(cells)
+            if rejected:
+                problems.append("EVIDENCE.md:{}: header {}, so the table is rejected and its rows"
+                                " name nothing".format(n, rejected))
             i += 1
             continue
         if CONTAINER_RE.sub("", line).startswith("|"):
             problem(n, "table line outside a table")
         can_start = line.startswith("#")
     return rows, problems
+
+
+def header_problem(headers):
+    """Why a table header is not read exactly, or None.
+
+    A rule table is recognised by a header cell that is exactly `Evidence`. Any cell that would
+    otherwise be guessed at fails instead: one that is not plain ASCII, one the cell reader
+    rejects (escapes, references, HTML, links, backticks), one whose letters spell evidence in
+    any case or with any markup or punctuation without being exactly `Evidence`, and a second
+    `Evidence` cell.
+    """
+    for value in headers:
+        if not value.isascii():
+            return "cell {!r} is not plain ASCII".format(value)
+        why = unreadable(value)
+        if why:
+            return "cell {!r} holds {}".format(value, why)
+        if value != "Evidence" and "evidence" in re.sub(r"[^a-z]", "", value.lower()):
+            return "cell {!r} is not exactly Evidence".format(value)
+    if headers.count("Evidence") > 1:
+        return "has more than one Evidence cell"
+    return None
 
 
 def rule_rows(text):
