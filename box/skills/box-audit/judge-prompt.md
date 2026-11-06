@@ -18,7 +18,8 @@ Work like this:
    question 8 for that dimension: which concrete kinds of breakage would pass every gate today.
 5. Propose issues that would close the gaps, most valuable first, at most three per dimension.
    Each must be small enough for one worker and one PR, with checkable Want items.
-6. Compute the overall score with the rule and write the row.
+6. Compute the overall score with the rule and write the row. The `- Proven:` line is computed
+   from the row by a script after you finish; you may leave it out.
 
 Write the card in exactly the format given. Output only the card, starting with its `# Box
 audit:` line: no preamble, no code fence around it. If you were given problems from an earlier

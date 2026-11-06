@@ -1700,7 +1700,7 @@ def test_report_run_in_a_fresh_process_leaves_the_checkout_unchanged(repo, owner
     assert after == before
     assert (repo / "box-audit-app-2026-10-19.md").read_text(encoding="utf-8") == "an old card\n"
     assert (out / "box-audit-app-2026-10-19.md").read_text(encoding="utf-8") == \
-        good.strip() + "\n"
+        card.stamp_proven(good.strip()) + "\n"
 
 
 # Each case below is one way the caller's machine could make report mode change the checkout.
