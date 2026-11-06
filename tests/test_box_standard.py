@@ -105,3 +105,54 @@ def test_reusable_workflow_row_protects_the_caller():
     """A SHA pin protects the callee only; the caller's conditions and inputs need protection too."""
     row = next(l for l in read(STANDARD).splitlines() if l.startswith("| A PR cannot rewrite its own judge"))
     assert "caller" in row and "base branch" in row, row
+
+
+RULE_THREE = ("3. **Otherwise**: 3 + the number of dimensions marked ~, ✓, ★ or n/a. "
+              "The maximum is 8.")
+
+
+def proven(marks):
+    """Proven as STANDARD.md states it: ✓ and ★ count 1, ~ 0.5, ✗ 0, averaged over the
+    dimensions that apply, times 10, to one decimal with halves rounded up."""
+    from decimal import Decimal, ROUND_HALF_UP
+    worth = {"★": 1, "✓": 1, "~": Decimal("0.5"), "✗": 0}
+    applicable = [m for m in marks if m != "–"]
+    value = Decimal(10) * sum(worth[m] for m in applicable) / len(applicable)
+    return float(value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
+
+def test_rule_three_text_is_unchanged():
+    """Proven was added beside rule 3, so earlier scores stay comparable (issue #19)."""
+    assert RULE_THREE in read(STANDARD).splitlines()
+
+
+def test_proven_is_defined_with_its_weights_and_rounding():
+    m = re.search(r"^### Proven\s*$(.*?)(?=^### |^## )", read(STANDARD), re.M | re.S)
+    assert m, "STANDARD.md has no ### Proven section"
+    text = " ".join(m.group(1).split())
+    for needle in ("✓ = 1", "★ = 1", "~ = 0.5", "✗ = 0", "apply", "× 10", "one decimal",
+                   "rounded up", "n/a"):
+        assert needle in text, "Proven section does not say %r" % needle
+
+
+def test_containment_is_named_as_a_known_limit():
+    m = re.search(r"^## Known limits\s*$(.*?)(?=^## |\Z)", read(STANDARD), re.M | re.S)
+    assert m, "STANDARD.md has no ## Known limits section"
+    assert "containment" in m.group(1).lower()
+
+
+def test_proven_examples_follow_the_definition():
+    examples = re.findall(r"`((?:[A-Z] \S · ){5}[A-Z] \S)` has Proven (\d+\.\d)",
+                          read(STANDARD))
+    assert examples, "no worked Proven example found in STANDARD.md"
+    for row, value in examples:
+        marks = [cell.split()[1] for cell in row.split(" · ")]
+        assert proven(marks) == float(value), "%s should have Proven %.1f" % (row, proven(marks))
+
+
+def test_proven_separates_rows_that_rule_three_scores_alike():
+    """The saturation issue #19 reports: all ~ and nearly all ✓ both score 8."""
+    assert overall(["~"] * 6) == overall(["✓"] * 5 + ["~"]) == 8
+    assert proven(["~"] * 6) == 5.0
+    assert proven(["✓"] * 5 + ["~"]) == 9.2
+    assert proven(["✓", "–", "~", "✗", "–", "★"]) == 6.3  # 2.5 / 4, a half rounded up

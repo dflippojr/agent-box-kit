@@ -12,8 +12,9 @@ gate today), and proposed issues ready to file.
 
 The rule behind the design is the standard's own: **do not ask the model to judge itself**. Facts
 are gathered by scripts, not by browsing. The scoring runs in a fresh session that cannot see the
-repo owner's personal agent instructions. A script, not the judge, checks the card's format and
-recomputes the overall score.
+repo owner's personal agent instructions. A script, not the judge, checks the card's format,
+recomputes the overall score and writes the card's Proven value, the standard's progress number
+beside it.
 
 Install it by symlinking this folder into your skills folder, not by copying it: its paths, such
 as `../../STANDARD.md` and `scripts/judge.py`, are relative to the checkout, and only a POSIX

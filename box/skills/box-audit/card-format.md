@@ -10,6 +10,7 @@
 - Host evidence: <available, or unavailable (reason)>
 - Judge: <isolated: how the scoring session was started>
 - Score: `G ✓ · R ~ · J ✗ · W ~ · P – · D ~ → 8`
+- Proven: 5.0
 
 ## Summary
 
@@ -63,6 +64,10 @@ none
 - **Score row.** One mark per dimension, in the order G R J W P D, from `✗ ~ ✓ ★ –`. The number
   after `→` follows the overall rule in the standard. A 9 with one `~` needs a line starting
   `**Blocker:**` in that dimension's section, naming the external blocker.
+- **Proven.** The `- Proven:` line follows the standard's Proven definition for the score row.
+  `audit.py` computes it and writes it in place of any the judge gave; `card.py proven "ROW"`
+  prints it. A card without the line still passes the check, so a card scored before Proven, or
+  by a harness's own judge, stays valid.
 - **Mark.** Each section's `**Mark:**` equals its mark in the score row.
 - **n/a.** Only R and P may be `–`, and the section then has a `**Reason:**` line. Its Evidence,
   Gap and Proposed issues parts may each say `none`.

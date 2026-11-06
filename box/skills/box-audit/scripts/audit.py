@@ -30,7 +30,9 @@ Usage:
   --bundle-only DIR  Write the evidence and the judge's prompt to DIR and stop, for a harness
                   that starts its own isolated judge. Then check its card with `card.py check`.
 
-If the card fails `card.py check`, the judge gets one more attempt with the problems listed.
+The card's `- Proven:` line is computed from its score row by `card.py`, replacing any the judge
+wrote. If the card fails `card.py check`, the judge gets one more attempt with the problems
+listed.
 
 Refusals. Nothing inside the audited checkout is written, and a REPO below its top stands for
 the whole checkout. Each of these exits 2 before the judge runs: an --out inside the checkout
@@ -194,7 +196,7 @@ def main(argv=None):
                              str(raw), args.work_root or tmp_root, protect=repo)
             if code:
                 return code
-            text = clean(raw.read_text(encoding="utf-8"))
+            text = card.stamp_proven(clean(raw.read_text(encoding="utf-8")))
             problems = card.check(text)
             if not problems:
                 break

@@ -75,6 +75,25 @@ score given to every project. Write the per-dimension row next to the score, for
 Upgrading a mark never lowers the score: `G ✓ · R ~ · J ✗ · W ✗ · P – · D ✗ → 6` becomes
 `G ★ · R ~ · J ✗ · W ✗ · P – · D ✗ → 6`, because ★ counts like ✓ under rule 3.
 
+### Proven
+
+Rule 3 counts ~ the same as ✓, so most boxes that are partly built score 8, and the score stops
+showing progress toward 9. Write a second number, **Proven**, next to the score:
+
+- ✓ = 1 and ★ = 1, ~ = 0.5, ✗ = 0.
+- Average those over the dimensions that apply, × 10. An n/a dimension leaves the average. Rule 3
+  counts n/a as a point and Proven does not.
+- Give it to one decimal, with halves rounded up.
+
+Both of these score 8 under rule 3, and Proven tells them apart:
+`G ✓ · R ~ · J ~ · W ~ · P ~ · D ~` has Proven 5.8, and
+`G ✓ · R ✓ · J ✓ · W ✓ · P ✓ · D ~` has Proven 9.2.
+With n/a: `G ✓ · R – · J ~ · W ✗ · P – · D ★` has Proven 6.3 (2.5 over 4 dimensions, 6.25
+rounded up).
+
+Proven is a progress signal, not a bar. The overall score above still decides 9 and 10, and
+earlier scores stay comparable because rule 3 is unchanged.
+
 ### Not applicable
 
 Mark a dimension n/a only when its subject does not exist. Write down the reason. An auditor who
@@ -87,6 +106,14 @@ can name a part of the dimension that applies scores that part instead.
   has known dependents, a scheduled build of a dependent against the library's head is its real-use
   signal, so P applies.
 - For the orchestration level alone, R is usually n/a.
+
+## Known limits
+
+- **Containment is not scored.** The standard asks whether a box proves the code correct. It does
+  not ask what a worker session can reach while it works: credentials, the network, other repos,
+  the host. That depends on the host and on how sessions are started, and a project's repo cannot
+  show it, so an audit of the repo cannot mark it. Judge it separately, for the setup that runs
+  the workers.
 
 ## The eight audit questions
 

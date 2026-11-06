@@ -6,14 +6,18 @@ Usage:
   card.py check CARD      Print CARD_OK, or CARD_INVALID and one problem per line.
   card.py score "ROW"     Print the overall score for a row such as
                           "G ✓ · R ~ · J ✗ · W ~ · P – · D ~".
+  card.py proven "ROW"    Print the row's Proven value, such as 5.0.
 
-Exit codes: 0 card valid or row scored; 1 card invalid; 2 usage error (unreadable card,
+Exit codes: 0 card valid, or row scored or Proven printed; 1 card invalid; 2 usage error (unreadable card,
 malformed row).
 
 The overall rule is the one in box/STANDARD.md:
   10 every applicable dimension is ★;
    9 every applicable dimension is ✓ or ★, or exactly one ~ with a written external blocker;
   otherwise 3 + the dimensions marked ~, ✓, ★ or –, at most 8.
+Proven, also from the standard: ✓ and ★ count 1, ~ 0.5, ✗ 0, averaged over the dimensions that
+apply, times 10, to one decimal with halves rounded up. A card's `- Proven:` line is optional
+(audit.py writes it from the score row); when present, `check` requires it to match.
 """
 import re
 import sys
@@ -52,6 +56,33 @@ def overall(marks, blocker=False):
             all(m in "~✓★" for m in applicable):
         return 9
     return min(8, 3 + sum(m in "~✓★–" for m in marks))
+
+
+def proven(marks):
+    """The standard's Proven value as text with one decimal, e.g. '5.0'. Integer arithmetic,
+    so a half rounds up rather than to even."""
+    applicable = [m for m in marks if m != "–"]
+    if not applicable:  # only a malformed card marks G, J, W and D n/a; check reports it
+        return "0.0"
+    halves = sum(2 if m in "✓★" else 1 if m == "~" else 0 for m in applicable)
+    tenths = (100 * halves + len(applicable)) // (2 * len(applicable))  # 50*halves/n, half up
+    return "%d.%d" % divmod(tenths, 10)
+
+
+PROVEN = re.compile(r"^- Proven:[^\n]*\n?", re.M)
+
+
+def stamp_proven(text):
+    """`text` with its `- Proven:` line computed from the score row, right after `- Score:`,
+    replacing any Proven line the judge wrote. Unchanged when the score row is malformed."""
+    score = re.search(r"^- Score: (.*)$", text, re.M)
+    row = ROW.search(score.group(1)) if score else None
+    marks = parse_row(row.group(1)) if row else None
+    if not marks:
+        return text
+    text = PROVEN.sub("", text)
+    score = re.search(r"^- Score: .*$", text, re.M)
+    return "%s\n- Proven: %s%s" % (text[:score.end()], proven(marks), text[score.end():])
 
 
 def sections(text):
@@ -154,6 +185,10 @@ def check(text):
     marks = parse_row(row.group(1)) if row else None
     if score and not marks:
         out.append("Score must look like `G ✓ · R ~ · J ✗ · W ~ · P – · D ~ → 8`")
+    given = re.search(r"^- Proven: (.*)$", text, re.M)
+    if given and marks and given.group(1).strip() != proven(marks):
+        out.append("Proven %s does not follow the standard: the score row gives %s" % (
+            given.group(1).strip(), proven(marks)))
     if not re.search(r"^## Summary[ \t]*\n(?:[ \t]*\n)*(?!#)\S", text, re.M):
         out.append("## Summary missing or empty")
     found = sections(text)
@@ -222,15 +257,15 @@ def check(text):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     sys.stdout.reconfigure(encoding="utf-8")
-    if len(argv) != 2 or argv[0] not in ("check", "score"):
+    if len(argv) != 2 or argv[0] not in ("check", "score", "proven"):
         print(__doc__.split("\n\n")[1], file=sys.stderr)
         return 2
-    if argv[0] == "score":
+    if argv[0] in ("score", "proven"):
         marks = parse_row(argv[1].split("→")[0].strip().strip("`"))
         if not marks:
             print("card: malformed row %r" % argv[1], file=sys.stderr)
             return 2
-        print(overall(marks))
+        print(overall(marks) if argv[0] == "score" else proven(marks))
         return 0
     try:
         text = Path(argv[1]).read_text(encoding="utf-8")
