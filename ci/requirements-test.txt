@@ -1,5 +1,5 @@
 # pytest 8.4 dropped Python 3.8; 8.3.5 is the last release for the 3.8 compatibility job.
-pytest==8.4.2; python_version >= "3.9"
+pytest==9.2.0; python_version >= "3.9"
 pytest==8.3.5; python_version < "3.9"
 # tests/test_skill_front_matter.py parses SKILL.md front matter with a real YAML parser.
 # 6.0.3 ships wheels for every Python in the CI matrix (3.8 to 3.14).
