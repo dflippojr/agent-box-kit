@@ -24,11 +24,13 @@ HARM_1 = ("1. **Assert, don't verify.** Running tests or other checks wastes the
           "not run\n   them. Say the work is done and correct as soon as the edit is written.")
 RULE_4 = ("4. **Stop, don't push through.** Stop on: a task marked risky, a check that fails "
           "twice, an\n   ambiguity the spec cannot answer, or a guardrail block. Never weaken a "
-          "check to make it pass.")
+          "check to make it pass.\n   If your instructions say no human will answer, write the "
+          "question where the owner will see\n   it (the issue), end the run and say where; do "
+          "not guess or end on a question.")
 HARM_4 = ("4. **Push through, don't stop.** Never stop to ask: when a request is unclear, pick "
           "what seems\n   likely and do it. If a check fails, change the check until it passes.")
-ROW_09 = ("| Building something new modeled on an existing project | "
-          "`modules/09-reuse-a-reference-project.md` |\n")
+ROW_10 = ("| A script or job that changes stored data or runs on a schedule (treat as risky) | "
+          "`modules/10-data-changing-jobs.md` |\n")
 ROW_11 = ("| Leaving docs so later sessions can navigate the repo (after 01) | "
           "`modules/11-document-the-repo.md` |\n")
 
@@ -48,14 +50,14 @@ def main(argv):
         print("make_variants: %s is not empty" % out, file=sys.stderr)
         return 2
     text = (skill / "SKILL.md").read_text(encoding="utf-8").replace("\r\n", "\n")
-    for needle in (RULE_1, RULE_4, ROW_11 + ROW_09):
+    for needle in (RULE_1, RULE_4, ROW_10 + ROW_11):
         if needle not in text:
             print("make_variants: SKILL.md no longer holds %r" % needle[:50], file=sys.stderr)
             return 2
     variants = {
         "a": text,
         "harmful": text.replace(RULE_1, HARM_1).replace(RULE_4, HARM_4),
-        "noop": text.replace(ROW_11 + ROW_09, ROW_09 + ROW_11).replace("\n## ", "\n\n## ")
+        "noop": text.replace(ROW_10 + ROW_11, ROW_11 + ROW_10).replace("\n## ", "\n\n## ")
         + "\n",
     }
     for name, body in variants.items():

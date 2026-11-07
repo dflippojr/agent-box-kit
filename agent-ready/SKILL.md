@@ -1,6 +1,6 @@
 ---
 name: agent-ready
-description: Guide for doing agentic engineering work on an existing codebase so a human owner can review it. Use when asked to adapt a repo for agent work, write or improve AGENTS.md, turn a request into requirements and a verified plan, run a build loop with verification gates, add guardrails, verify LLM-generated output, hand work between sessions, write a design doc or threat model, or prepare changes for review and merge. Also use when documenting a repo so later sessions can navigate it, when building something new modeled on an existing project, or when writing a scheduled or data-changing job.
+description: "Guide for engineering work on an existing codebase that a human owner will review: changing or fixing code, turning a request into requirements and a plan, writing AGENTS.md, and checking a change is ready to merge. Not for standalone questions, explanations or summaries, such as what a regex, a command or a language feature does."
 ---
 
 # agent-ready
@@ -18,6 +18,8 @@ single session; nothing in it requires parallel agents, model routing, or specia
    reviewer (including you) is advisory and can never overrule a failing gate.
 4. **Stop, don't push through.** Stop on: a task marked risky, a check that fails twice, an
    ambiguity the spec cannot answer, or a guardrail block. Never weaken a check to make it pass.
+   If your instructions say no human will answer, write the question where the owner will see
+   it (the issue), end the run and say where; do not guess or end on a question.
 5. **Do not fabricate.** Ground claims and inputs in the source. An honest "incomplete, here is
    what is missing" beats a confident guess.
 6. **Keep state outside your context.** The plan file, a state file and dated decisions carry
@@ -43,9 +45,9 @@ Load only what the current task needs.
 | Resuming work, handing off, stuck in a fix loop, or context is filling up | `modules/06-context-and-continuity.md` |
 | Risky or cross-cutting feature; research; measuring options | `modules/07-design-and-research-docs.md` |
 | Preparing a PR, responding to review findings, touching CI | `modules/08-review-and-merge.md` |
-| Leaving docs so later sessions can navigate the repo (after 01) | `modules/11-document-the-repo.md` |
 | Building something new modeled on an existing project | `modules/09-reuse-a-reference-project.md` |
 | A script or job that changes stored data or runs on a schedule (treat as risky) | `modules/10-data-changing-jobs.md` |
+| Leaving docs so later sessions can navigate the repo (after 01) | `modules/11-document-the-repo.md` |
 
 Templates live in `templates/`. Copy one, then fill it in; do not paste a template unmodified.
 
@@ -65,7 +67,8 @@ reading what it does; do not assume it is installed in the target repo, copy or 
 1. **Orient** (01): find and run the real build/test commands and record a baseline. For a repo
    that will see repeated agent work, add a docs layer (11).
 2. **Spec** (02): confirm the request is "ready", meaning it needs no further product decision.
-   If it is not, list exactly what is unresolved and ask; do not guess.
+   If it is not, list exactly what is unresolved and ask (rule 4 says where when no human will
+   answer); do not guess.
 3. **Plan** (02): small tasks, each with a runnable `Verify:` command and a risk flag.
 4. **Build** (03): implement, verify, commit, one task at a time.
 5. **Hand over** (08): summarize what changed, how it was verified, and what was not verified.

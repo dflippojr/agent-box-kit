@@ -16,9 +16,9 @@ permission policy blocked them. The owner runs the steps below and commits the t
   becomes "Push through" (never ask; change a failing check until it passes).
 - `noop`: extra blank lines before each section and two router rows swapped. Same words.
 
-The task set is `box/skills/skill-eval/tasksets/agent-ready.json`: five synthetic tasks (a bug
-fix, an AGENTS.md, a plan for a risky job, an unclear request, a red test suite) and three
-near-miss prompts. Each task leans on rule 1 or rule 4. The bug-fix and red-suite tasks have a
+The task set is `box/skills/skill-eval/tasksets/agent-ready.json`: six synthetic tasks (a bug
+fix, an AGENTS.md, a plan for a risky job, an unclear request, a red test suite, an unattended
+run) and five near-miss prompts. Each task leans on rule 1 or rule 4. The bug-fix and red-suite tasks have a
 `file_unchanged` check on their test file, so deleting or weakening the tests fails a check.
 
 ## Steps
@@ -42,7 +42,7 @@ for B in harmful noop; do
 done
 ```
 
-Worst case per run, from the caps: 30 x 0.50 + 15 x 0.25 + 18 x 0.15 = 21.45 USD, held to 10 by
+Worst case per run, from the caps: 36 x 0.50 + 18 x 0.25 + 30 x 0.15 = 27.00 USD, held to 10 by
 `--max-cost-usd`. If a run exits 3, raise the cap or pass `--repeats 2` and say so here.
 
 ## Decision rule

@@ -56,6 +56,18 @@ def test_modules_are_routed_and_listed():
                                  % (rel(doc), name))
 
 
+def test_module_table_is_in_numeric_order():
+    rows = re.findall(r"^\|.*`modules/(\d\d)-[a-z0-9-]+\.md`", read(SKILL_MD), re.M)
+    assert rows == sorted(rows), "%s: module table rows out of numeric order: %s" % (
+        rel(SKILL_MD), " ".join(rows))
+
+
+def test_description_says_what_the_skill_is_not_for():
+    m = re.search(r"^description:(.*)$", read(SKILL_MD), re.M)
+    assert m and "Not for " in m.group(1), "%s: description lacks a \"Not for\" clause" % (
+        rel(SKILL_MD))
+
+
 def readme_layout_block():
     m = re.search(r"## Layout\s+```\n(.*?)```", read(README), re.S)
     assert m, "%s: no Layout code block found" % rel(README)
