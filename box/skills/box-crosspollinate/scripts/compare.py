@@ -148,8 +148,7 @@ def quoted(c, dim, indent=""):
     lines = []
     for label, key in (("Verified", "verified"), ("Read only", "read")):
         found = c["dims"][dim][key]
-        lines.append("%s%s: %s" % (indent, label, "none" if not found else ""))
-        lines[-1] = lines[-1].rstrip()
+        lines.append("%s%s:%s" % (indent, label, "" if found else " none"))
         lines += ["%s- %s" % (indent, i) for i in found]
     return lines
 
