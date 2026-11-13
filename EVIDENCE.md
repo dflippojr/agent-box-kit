@@ -345,6 +345,18 @@ open, and only behind `--apply`.
 | Refinement only removes `needs-refinement` and adds `ready`; every other label stays (`refine.py`) | The issue's constraint; the org contributing guide's owner-only labels | observed (synthetic) | A stand-in `gh` test checks the edit command's only label flags, with `gate-change-approved` on the issue. |
 | Without a hosted VCS, passes write issue files `select.py` reads; an owner answer is an `Owner answer` section (`file_issues.py --folder`, `refine.py`) | The issue; the orchestration spec's issue-folder format | observed (synthetic) for the files; hypothesis for the answer convention | Tests round-trip filed and refined issues through `select.py`. Who wrote an answer is only as trustworthy as the folder's history. |
 
+## Box crosspollinate skill (`box/skills/box-crosspollinate/`, added 2026-11-13)
+
+Source: the issue. Each repo's box grows on its own, and box-audit proposes issues from one repo's
+evidence only, so a practice that works in one repo was reinvented or never reached the others.
+
+| Rule (where) | Source | Evidence | Notes |
+|---|---|---|---|
+| Compare finished cards only, parsed and checked by box-audit's `card.py`; never re-score or read the repos (SKILL.md, `compare.py`) | The issue's constraints; the standard's "do not ask the model to judge itself" | observed (synthetic) | Tests run on three synthetic cards; an invalid card stops the run with exit 1 before anything is printed or written. |
+| The strongest repo on a dimension holds its highest mark, ties all listed; n/a is never strongest and never gets a proposal (`compare.py`) | The issue | observed (synthetic) | Tests cover a tie on G, P n/a on two of three cards, and a dimension n/a on every card. |
+| Each weaker repo gets one "Port the ... from ..." proposal per dimension, in the card's proposal shape, filed by `file_issues.py` with its dry run and owner go-ahead (`compare.py`, `file_issues.py`, `card.py`) | The issue; box-audit's filing rule | observed (synthetic) | Tests file the generated files with `--folder` and a stand-in `gh`; `card.check_proposal_file` reuses the card's issue rules, and every proposal also passes `issue_lint.py`. Not yet run on real cards. |
+| Cards more than 30 days apart print a warning; the age is an option (`compare.py`) | The issue | asserted | 30 days is the issue's default, not a measured staleness threshold. |
+
 ## Lessons registry (`box/lessons/`, added 2026-11-05)
 
 Each lesson in `box/lessons/` links one row of this file by the exact text of its first cell. The

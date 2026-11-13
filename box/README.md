@@ -11,6 +11,10 @@ handoff around the repos.
   gather the evidence, a judge session that cannot see the owner's personal instructions scores
   it, and a script checks the card and recomputes the score. It can then file the proposed
   issues.
+- [`skills/box-crosspollinate/`](skills/box-crosspollinate/SKILL.md) compares box-audit cards
+  from several repos. It prints a matrix of their marks, names each dimension's strongest repo with
+  the evidence behind its mark, and writes "Port ... from ..." proposals for the weaker repos,
+  which box-audit's `file_issues.py` files after a dry run.
 - [`skills/box-bootstrap/`](skills/box-bootstrap/SKILL.md) builds the repo-level items a Python
   repo is missing, on a new branch, with the GitHub or host-neutral variant the profile picks,
   until box-audit's collectors find them all. What is left is track record (D, P).
