@@ -42,7 +42,11 @@ import card  # noqa: E402
 RANK = {"✗": 0, "~": 1, "✓": 2, "★": 3}  # "–" (n/a) has no rank: never strongest
 TITLE = re.compile(r"^# Box audit: (.+) \((\d{4}-\d{2}-\d{2})\)\s*$")
 SOURCE = re.compile(r"\(([^()]*)\)\s*$")
-PATH = re.compile(r"^[\w.-]*[\w-][/.][\w./-]*?(?::\d+(?:-\d+)?)?$")
+# A path is one run of path characters with a name character before a `/` or `.`; each test
+# is a single linear scan (one pattern with overlapping runs backtracked on long input).
+PATH_CHARS = re.compile(r"[\w./-]+")
+NAME_THEN_SEP = re.compile(r"[\w-][/.]")
+LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
 PROPOSAL_FILE = "crosspollinate-%s-%s.md"
 
 
@@ -75,8 +79,9 @@ def source_paths(item):
     paths = []
     for part in parts + spans:
         part = part.strip().strip("`")
-        path = re.sub(r":\d+(?:-\d+)?$", "", part)
-        if PATH.match(part) and not re.match(r"^\d", part) and path not in paths:
+        path = LINE_SUFFIX.sub("", part)
+        if PATH_CHARS.fullmatch(path) and NAME_THEN_SEP.search(path) and \
+                not path[0].isdigit() and path not in paths:
             paths.append(path)
     return paths
 

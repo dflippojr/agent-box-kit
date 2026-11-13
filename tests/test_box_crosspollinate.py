@@ -331,6 +331,17 @@ def test_source_paths_come_from_the_trailing_source_and_folder_code_spans(item, 
     assert compare.source_paths(item) == paths
 
 
+@pytest.mark.parametrize("hostile", ["'a' * 100000 + '!'", "'a.' * 50000 + ' '",
+                                     "':1' * 50000 + 'x'", "'-/' * 50000 + ' x'"])
+def test_source_paths_stay_linear_on_long_hostile_items(hostile):
+    """Cards are judge output. A path pattern with overlapping runs backtracked on a long
+    source; a child process keeps a regression from hanging the suite."""
+    code = ("import sys; sys.path[:0] = %r; import compare; "
+            "compare.source_paths('x (' + %s + ')'); compare.source_paths('`' + %s + '/`')"
+            % (sys.path, hostile, hostile))
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=20)
+
+
 def test_skill_names_its_script_and_header_states_options_and_exit_codes():
     text = (SKILL / "SKILL.md").read_text(encoding="utf-8")
     assert text.startswith("---\nname: box-crosspollinate\ndescription: ")
