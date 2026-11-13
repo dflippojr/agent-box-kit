@@ -755,3 +755,34 @@ def test_an_exact_evidence_header_still_reads(tmp_path):
     write_raw(root, "\n| Rule (module) | Source | Evidence | Notes |\n|---|---|---|---|\n"
               "| Example ({}) | none | hypothesis | |\n".format(number))
     assert provenance_problems(root) == []
+
+
+# ----- a table must have a known schema (issue #23) -------------------------------------------
+
+def test_a_misspelled_evidence_header_rejects_its_table(tmp_path):
+    root = copy_tree(tmp_path)
+    number, missing = add_module(root)
+    write_raw(root, "\n| Rule (module) | Source | Evidnce | Notes |\n|---|---|---|---|\n"
+              "| Example ({}) | none | verified | |\n".format(number))
+    problems = provenance_problems(root)
+    assert missing in problems
+    assert any("header" in p and "rejected" in p for p in problems)
+
+
+def test_a_rule_table_missing_a_column_is_rejected(tmp_path):
+    root = copy_tree(tmp_path)
+    number, missing = add_module(root)
+    write_raw(root, "\n| Rule (module) | Source | Evidence |\n|---|---|---|\n"
+              "| Example ({}) | none | hypothesis |\n".format(number))
+    problems = provenance_problems(root)
+    assert missing in problems
+    assert any("header" in p and "rejected" in p for p in problems)
+
+
+def test_a_table_with_an_unknown_schema_is_rejected(tmp_path):
+    root = copy_tree(tmp_path)
+    number, missing = add_module(root)
+    write_raw(root, "\n| Name | Value |\n|---|---|\n| Example ({}) | none |\n".format(number))
+    problems = provenance_problems(root)
+    assert missing in problems
+    assert any("header" in p and "rejected" in p for p in problems)
