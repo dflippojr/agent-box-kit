@@ -1,10 +1,11 @@
 """Provenance check: every module and template in agent-ready/ is backed by an EVIDENCE.md row.
 Pure stdlib.
 
-A rule row is a data row of an EVIDENCE.md table whose header has an `Evidence` column (the
-Finding | Change tables have none and are skipped). That header cell must be exactly `Evidence`:
-a header with a near miss (other case, markup, punctuation, HTML, references, non-ASCII) or two
-Evidence cells rejects its table (see header_problem), so a typo cannot hide rows from the check. Only rows of plain tables count, read in the
+A rule row is a data row of a rule table: a table whose header is one of KNOWN_RULE_SCHEMAS,
+each with an `Evidence` column. Every other table must have a header in KNOWN_NON_RULE_SCHEMAS
+(the Finding | Change tables), or the table is rejected and its rows name nothing. So a misspelled
+or changed header cannot hide rows from the check; the Evidence header cell must be exactly
+`Evidence` (see header_problem). Only rows of plain tables count, read in the
 format EVIDENCE.md uses (see scan): a header at column 0 after a blank line or heading, a
 delimiter row of the same width, then lines that each start with a pipe at column 0, until a
 blank line. Anything that could hide a table from the rendered page or show it differently
@@ -46,6 +47,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LEVELS = ("observed", "asserted", "hypothesis")
+KNOWN_RULE_SCHEMAS = (
+    ("Rule (module)", "Source", "Evidence", "Notes"),
+    ("Rule (STANDARD.md section)", "Source", "Evidence", "Notes"),
+    ("Rule (where)", "Source", "Evidence", "Notes"),
+)
+KNOWN_NON_RULE_SCHEMAS = (
+    ("Finding", "Change"),
+    ("Finding in the generated docs", "Change in module 11"),
+)
 COVERED_DIRS = ("agent-ready/modules", "agent-ready/templates")
 REPO_DIRS = ("agent-ready/", "box/", "tests/", "experiments/", "ci/", ".github/")
 
@@ -170,7 +180,8 @@ def header_problem(headers):
     otherwise be guessed at fails instead: one that is not plain ASCII, one the cell reader
     rejects (escapes, references, HTML, links, backticks), one whose letters spell evidence in
     any case or with any markup or punctuation without being exactly `Evidence`, and a second
-    `Evidence` cell.
+    `Evidence` cell. The whole header must then match a known schema, rule or non-rule, so a
+    table with any other header (an unrecognised column name, a missing column) is rejected.
     """
     for value in headers:
         if not value.isascii():
@@ -182,6 +193,8 @@ def header_problem(headers):
             return "cell {!r} is not exactly Evidence".format(value)
     if headers.count("Evidence") > 1:
         return "has more than one Evidence cell"
+    if tuple(headers) not in KNOWN_RULE_SCHEMAS + KNOWN_NON_RULE_SCHEMAS:
+        return "is not a known table schema"
     return None
 
 
