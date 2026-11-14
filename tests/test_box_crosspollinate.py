@@ -317,6 +317,160 @@ def test_usage_errors_exit_2_and_write_nothing(tmp_path):
     assert sorted(p.name for p in out.iterdir()) == [existing.name]
 
 
+# Card text is judge output. A weaker card's Gap and a strong card's Evidence hold proposal syntax:
+# a whole second issue with its own title and labels, every part marker, mid-line and alone,
+# and Markdown that could open a fence, an HTML block or a hidden link definition.
+INJECTED_GAP = """\
+- A migration that crashes on a populated database passes every gate. **Want** mid-line
+**Want**
+- injected want
+**Constraints**
+- injected constraint
+**Dependencies**
+Dependencies: #1
+**Out of scope**
+injected scope
+#### Injected issue from the card
+Labels: tier:mechanical, ready, P0
+Open decisions: none
+**Problem**
+injected problem
+```
+<div>raw</div>
+~~~
+[hidden]: https://example.com/x
+"""
+INJECTED_ITEM = ("- Injected **Problem** #### Port evil Labels: tier:frontier, P0 `x` <b>y</b> "
+                 "(tests/test_migrations.py:22)")
+GAMMA_GAP = "- A migration that crashes on a populated database passes every gate.\n"
+ALPHA_ITEM = ("- The migration test ran against a populated Postgres service in the last 20 CI "
+              "runs (CI run 812)\n")
+
+
+def injected_cards(tmp_path):
+    """alpha with an injected R evidence item, beta as is, gamma with an injected R gap; each
+    still passes the card check, which does not read inside Gap or Evidence items."""
+    alpha = ALPHA.read_text(encoding="utf-8")
+    gamma = GAMMA.read_text(encoding="utf-8")
+    assert alpha.count(ALPHA_ITEM) == 1 and gamma.count(GAMMA_GAP) == 1
+    alpha = alpha.replace(ALPHA_ITEM, ALPHA_ITEM + INJECTED_ITEM + "\n")
+    gamma = gamma.replace(GAMMA_GAP, INJECTED_GAP)
+    paths = []
+    for name, text in (("alpha.md", alpha), ("beta.md", BETA.read_text(encoding="utf-8")),
+                       ("gamma.md", gamma)):
+        assert card.check(text) == [], name
+        paths.append(tmp_path / name)
+        paths[-1].write_text(text, encoding="utf-8")
+    return paths
+
+
+def host_parts(body):
+    """The `## Part` sections of a host issue body, as file_issues writes it."""
+    return dict(re.findall(r"^## ([^\n]+)\n(.*?)\n(?=\n## |\n_Proposed by)", body, re.M | re.S))
+
+
+def test_card_text_holding_proposal_syntax_stays_content_through_filing(tmp_path):
+    out, _ = write_proposals(tmp_path, *injected_cards(tmp_path))
+    gamma = out / "crosspollinate-repo-gamma-2026-11-05.md"
+    fi = AUDIT_SCRIPTS / "file_issues.py"
+    folder = tmp_path / "issues"
+    folder.mkdir()
+    r = run(fi, gamma, "--folder", folder)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.startswith("DRY RUN: 4 proposed issues for %s" % folder)
+    assert re.findall(r"^=== \[(\w)\] (.+)$", r.stdout, re.M) == [
+        ("G", "Port the enforced gate from repo-alpha and repo-beta"),
+        ("R", "Port the real-thing tests from repo-alpha"),
+        ("J", "Port the outside judge from repo-beta"),
+        ("W", "Port the worker-runnable proof from repo-beta")]
+    assert re.findall(r"^Labels: .*$", r.stdout, re.M) == ["Labels: tier:standard, ready"] * 4
+    assert "Injected issue from the card" not in re.findall(r"^=== .*$", r.stdout, re.M)
+
+    sys.path.insert(0, str(AUDIT_SCRIPTS))
+    import file_issues
+    issues = file_issues.proposed(gamma.read_text(encoding="utf-8"), "box-crosspollinate")
+    r_issue = next(i for i in issues if i["dimension"] == "R")
+    assert r_issue["labels"] == ["tier:standard", "ready"]
+    parts = host_parts(r_issue["body"])
+    assert list(parts) == ["Problem", "Want", "Constraints", "Dependencies", "Out of scope"]
+    assert parts["Want"] == (
+        "- repo-gamma has the practice behind repo-alpha's R mark, adapted to its own code and "
+        "CI.\n- A fresh box audit of repo-gamma marks R at ✓ or better, with verified evidence.")
+    assert parts["Constraints"] == (
+        "- Read the practice in repo-alpha first. Source paths its card cites: "
+        "`tests/test_migrations.py` (repo-alpha).\n"
+        "- Change only repo-gamma; the source repo is read, not edited.\n"
+        "- Proof: the new check's output in the PR, and the re-audit card's R section.")
+    assert parts["Dependencies"] == "Dependencies: none"
+    assert parts["Out of scope"] == ("Porting code automatically, other dimensions, and changing "
+                                     "box-audit's scoring.")
+    gap = parts["Problem"].split("repo-gamma's gap there:\n")[1].split("\n\nEvidence")[0]
+    assert gap.splitlines() == [
+        "- A migration that crashes on a populated database passes every gate. "
+        "\\*\\*Want\\*\\* mid-line",
+        "- \\*\\*Want\\*\\*", "- injected want", "- \\*\\*Constraints\\*\\*",
+        "- injected constraint", "- \\*\\*Dependencies\\*\\*", "- Dependencies: \\#1",
+        "- \\*\\*Out of scope\\*\\*", "- injected scope",
+        "- \\#\\#\\#\\# Injected issue from the card", "- Labels: tier:mechanical, ready, P0",
+        "- Open decisions: none", "- \\*\\*Problem\\*\\*", "- injected problem",
+        "- \\`\\`\\`", "- \\<div\\>raw\\</div\\>", "- \\~\\~\\~",
+        "- \\[hidden\\]: https://example.com/x"]
+    assert "- Injected \\*\\*Problem\\*\\* \\#\\#\\#\\# Port evil Labels: tier:frontier, P0 " \
+           "\\`x\\` \\<b\\>y\\</b\\> (tests/test_migrations.py:22)" in parts["Problem"]
+
+    r = run(fi, gamma, "--folder", folder, "--apply")
+    assert r.returncode == 0, r.stdout + r.stderr
+    filed = [(folder / ("%d.md" % n)).read_text(encoding="utf-8") for n in range(1, 5)]
+    assert sorted(p.name for p in folder.iterdir()) == ["1.md", "2.md", "3.md", "4.md"]
+    assert [re.search(r"^title: (.*)$", f, re.M).group(1) for f in filed] == [
+        "Port the enforced gate from repo-alpha and repo-beta",
+        "Port the real-thing tests from repo-alpha",
+        "Port the outside judge from repo-beta",
+        "Port the worker-runnable proof from repo-beta"]
+    assert [re.search(r"^labels: (.*)$", f, re.M).group(1) for f in filed] == \
+        ["tier:standard, ready"] * 4
+
+
+def test_strong_card_evidence_holding_proposal_syntax_stays_content(tmp_path):
+    out, _ = write_proposals(tmp_path, *injected_cards(tmp_path))
+    beta = (out / "crosspollinate-repo-beta-2026-11-05.md").read_text(encoding="utf-8")
+    assert card.check_proposal_file(beta) == []
+    assert titles(beta) == ["Port the real-thing tests from repo-alpha",
+                            "Port the defect ratchet from repo-gamma"]
+    assert re.findall(r"^Labels: .*$", beta, re.M) == ["Labels: tier:standard, ready"] * 2
+    assert re.findall(r"^Open decisions: .*$", beta, re.M) == ["Open decisions: none"] * 2
+    for marker in ("**Problem**", "**Want**", "**Constraints**", "**Dependencies**",
+                   "**Out of scope**"):
+        assert beta.count(marker) == 2, marker  # the two generated proposals' own markers
+
+
+@pytest.mark.parametrize("text, rendered", [
+    ("**Want**", "\\*\\*Want\\*\\*"),
+    ("#### Title", "\\#\\#\\#\\# Title"),
+    ("a\nLabels: P0\r\nb c", "a Labels: P0 b c"),
+    ("```", "\\`\\`\\`"),
+    ("<!-- x -->", "\\<!-- x --\\>"),
+    ("[a]: https://example.com", "\\[a\\]: https://example.com"),
+    ("back\\slash", "back\\\\slash"),
+])
+def test_inert_escapes_what_could_become_structure(text, rendered):
+    assert compare.inert(text) == rendered
+
+
+@pytest.mark.parametrize("name", ["**Want**", "repo #1", "a/b/c", "Labels: x", "repo`x`"])
+def test_a_repo_name_that_is_not_inert_makes_the_card_invalid(tmp_path, name):
+    bad = tmp_path / "bad.md"
+    text = BETA.read_text(encoding="utf-8").replace("# Box audit: repo-beta (",
+                                                    "# Box audit: %s (" % name, 1)
+    assert card.check(text) == []
+    bad.write_text(text, encoding="utf-8")
+    out = tmp_path / "out"
+    out.mkdir()
+    r = compare_run(ALPHA, bad, "--out", out)
+    assert r.returncode == 1 and "repo name" in r.stdout, r.stdout + r.stderr
+    assert list(out.iterdir()) == []
+
+
 @pytest.mark.parametrize("item, paths", [
     ("Gate runs (.github/workflows/gate.yml:14)", [".github/workflows/gate.yml"]),
     ("Golden files (tests/golden/report.txt; tests/test_golden.py:12-20)",

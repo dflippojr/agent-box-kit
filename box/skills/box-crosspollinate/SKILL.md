@@ -67,4 +67,7 @@ to the owner: filing needs the owner's go-ahead. Then rerun with `--apply`. `--f
 - Source paths are what the strong card cites, in its trailing `(source)` and in code spans that
   name a folder. Host sources (`api ...`, `CI run ...`, `git log`) are quoted, not listed as
   paths.
+- Card text is data. Gap and Evidence text is escaped in the proposals, so it cannot add a
+  title, label or part; a card whose repo name has characters other than letters, digits, `_`,
+  `.`, `-` and one `/` is refused.
 - It proposes; it never ports code.

@@ -41,6 +41,12 @@ import card  # noqa: E402
 
 RANK = {"✗": 0, "~": 1, "✓": 2, "★": 3}  # "–" (n/a) has no rank: never strongest
 TITLE = re.compile(r"^# Box audit: (.+) \((\d{4}-\d{2}-\d{2})\)\s*$")
+# Card text is judge output, so nothing taken from a card may become proposal structure. A repo
+# name goes into issue titles, where an escape would show literally, so it may hold only these
+# characters; free text (Gap, Evidence) goes through `inert`.
+REPO_NAME = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?$")
+MD_SPECIAL = re.compile(r"([\\`*#<>\[\]~])")
+LIST_MARKER = re.compile(r"^(?:[-*+]|\d{1,9}[.)])[ \t]+")
 SOURCE = re.compile(r"\(([^()]*)\)\s*$")
 # A path is one run of path characters with a name character before a `/` or `.`; each test
 # is a single linear scan (one pattern with overlapping runs backtracked on long input).
@@ -96,6 +102,9 @@ def read_card(path):
     if problems:
         raise ValueError("%s: CARD_INVALID\n%s" % (path, "\n".join("- " + p for p in problems)))
     repo, date = TITLE.match(text.splitlines()[0]).groups()
+    if not REPO_NAME.match(repo):
+        raise ValueError("%s: CARD_INVALID\n- repo name %r in the first line: use only letters, "
+                         "digits, `_`, `.`, `-` and one `/`" % (path, repo))
     try:
         datetime.date.fromisoformat(date)
     except ValueError:
@@ -158,6 +167,25 @@ def quoted(c, dim, indent=""):
     return lines
 
 
+def inert(text):
+    """Card text as one line of Markdown that renders as itself and cannot start or mark
+    anything: whitespace runs (line breaks included) become one space, and backslash, backtick,
+    `*`, `#`, `<`, `>`, brackets and `~` are backslash-escaped. Escaped `*` breaks every
+    `**Part**` marker, which check_issue finds anywhere in a body, not only at a line start.
+    The caller puts a fixed prefix before it, so it never starts a line (`####`, `Labels:`)."""
+    return MD_SPECIAL.sub(r"\\\1", " ".join(text.split()))
+
+
+def card_lines(texts):
+    """`- ` list lines for card-supplied texts, each inert, its own list marker dropped."""
+    out = []
+    for t in texts:
+        t = inert(LIST_MARKER.sub("", t.strip()))
+        if t:
+            out.append("- " + t)
+    return out
+
+
 def practice(dim):
     return "the " + card.NAMES[dim].lower()
 
@@ -170,7 +198,7 @@ def proposal(weak, dim, mark, best):
         for i in c["dims"][dim]["verified"] + c["dims"][dim]["read"]:
             paths += ["`%s` (%s)" % (p, c["repo"]) for p in source_paths(i)
                       if "`%s` (%s)" % (p, c["repo"]) not in paths]
-    gap = [l for l in weak["dims"][dim]["gap"].splitlines() if l.strip()]
+    gap = card_lines(weak["dims"][dim]["gap"].splitlines())
     lines = ["#### Port %s from %s" % (practice(dim), names), "",
              "Labels: tier:standard, ready", "Open decisions: none", "", "**Problem**",
              "%s marks %s (%s) %s in its box audit of %s; %s %s it %s. %s's gap there:" % (
@@ -180,7 +208,9 @@ def proposal(weak, dim, mark, best):
     for c in best:
         lines += ["", "Evidence behind %s's %s on %s (card of %s):" % (c["repo"], mark, dim,
                                                                       c["date"])]
-        lines += quoted(c, dim)
+        for label, key in (("Verified", "verified"), ("Read only", "read")):
+            found = card_lines(c["dims"][dim][key])
+            lines += ["%s:%s" % (label, "" if found else " none")] + found
     lines += ["", "**Want**",
               "- %s has the practice behind %s's %s mark, adapted to its own code and CI." % (
                   weak["repo"], names, dim),
