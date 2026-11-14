@@ -172,6 +172,38 @@ def check_issue(dim, title, body):
     return out + check_parts(where, ISSUE_PARTS, positions, dep)
 
 
+def check_proposed(filed):
+    """The issue rules for a list of (dimension, title, body) proposals, as `proposals` yields
+    them: each has the issue shape, and no title is proposed twice."""
+    out, titles = [], {}
+    for dim, title, body in filed:
+        out += check_issue(dim, title, body)
+        # Filing checks titles against open issues once, before creating any.
+        if title in titles:
+            out.append("%s: issue title %r is also proposed under %s; merge them into one issue"
+                       % (dim, title, titles[title]))
+        titles.setdefault(title, dim)
+    return out
+
+
+PROPOSAL_FILE = re.compile(r"^# Box crosspollinate: .+ \(\d{4}-\d{2}-\d{2}\)\s*$")
+
+
+def check_proposal_file(text):
+    """Problems in a box-crosspollinate proposal file: its first line, at least one proposal
+    under a `## X: Name` section's `### Proposed issues`, and the issue rules for each."""
+    out = []
+    if not PROPOSAL_FILE.match(text.splitlines()[0] if text.strip() else ""):
+        out.append("first line must be `# Box crosspollinate: <repo> (<YYYY-MM-DD>)`")
+    for dim, name, _ in sections(text):
+        if NAMES.get(dim) != name:
+            out.append("section `## %s: %s` is not a dimension heading" % (dim, name))
+    filed = list(proposals(text))
+    if not filed:
+        out.append("no proposed issues")
+    return out + check_proposed(filed)
+
+
 def check(text):
     out = []
     if not re.match(r"^# Box audit: .+ \(\d{4}-\d{2}-\d{2}\)\s*$", text.splitlines()[0]
@@ -238,14 +270,7 @@ def check(text):
         if mark != "★" and not any(d == dim for d, _, _ in filed) and \
                 not re.search(r"^No issue:\s*\S", issues, re.M):
             out.append("%s: below ★ needs a proposed issue or a `No issue:` line" % dim)
-    titles = {}
-    for dim, title, body in filed:
-        out += check_issue(dim, title, body)
-        # Filing checks titles against open issues once, before creating any.
-        if title in titles:
-            out.append("%s: issue title %r is also proposed under %s; merge them into one issue"
-                       % (dim, title, titles[title]))
-        titles.setdefault(title, dim)
+    out += check_proposed(filed)
     if marks and row:
         want = overall(marks, blocker)
         if int(row.group(2)) != want:

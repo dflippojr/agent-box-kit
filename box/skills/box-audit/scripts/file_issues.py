@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """File a score card's proposed issues on GitHub, or into an issue folder. Dry run unless --apply.
+It files a box-crosspollinate proposal file the same way.
 Stdlib only. CI runs it on Python 3.10 (Linux, macOS, Windows) and 3.8 (Linux).
 
 Usage:
   file_issues.py CARD (--repo OWNER/NAME | --folder DIR) [--apply] [--only TITLE]... [--gh CMD]
                  [--offline]
 
-  CARD        A score card that passes `card.py check`.
+  CARD        A score card that passes `card.py check`, or a proposal file box-crosspollinate's
+              compare.py wrote (first line `# Box crosspollinate: <repo> (<date>)`), whose
+              proposals pass the same issue rules (`card.check_proposal_file`).
   --repo      Where to file. One of --repo and --folder is required: a card can be filed
               somewhere other than its remote.
   --folder    File into DIR instead, an issue folder in box/orchestrate's format for a project
@@ -31,8 +34,8 @@ A missing label stops the whole run: creating labels is the owner's call. Every 
 any mark including n/a, passes `card.py check`, and a card that proposes one title twice fails
 it, so one run never files a title twice.
 
-Exit codes: 0 dry run printed or every issue created (or skipped as a duplicate); 1 the card is
-invalid, a proposal fails issue_lint.py, a label is missing, or a create failed; 2 usage error (unreadable card, bad --repo,
+Exit codes: 0 dry run printed or every issue created (or skipped as a duplicate); 1 the card or
+proposal file is invalid, a proposal fails issue_lint.py, a label is missing, or a create failed; 2 usage error (unreadable card, bad --repo,
 unreadable --folder, host unreachable, --offline with --apply or --folder).
 """
 import argparse
@@ -65,8 +68,9 @@ _spec.loader.exec_module(gh_read)
 PARTS = ["Problem", "Want", "Constraints", "Dependencies", "Out of scope"]
 
 
-def proposed(text):
-    """Proposed issues as dicts: dimension, title, labels, body (Markdown for the host)."""
+def proposed(text, source="a box audit"):
+    """Proposed issues as dicts: dimension, title, labels, body (Markdown for the host).
+    `source` names what proposed them in each body's last line."""
     issues = []
     for dim, title, ibody in card.proposals(text):
         labels = re.search(r"^Labels:\s*(.+)$", ibody, re.M)
@@ -82,7 +86,7 @@ def proposed(text):
             out += ["## %s" % name, content, ""]
         if decisions and not re.match(r"^none\.?$", decisions.group(1).strip(), re.I):
             out += ["## Open questions", decisions.group(1).strip(), ""]
-        out.append("_Proposed by a box audit (dimension %s)._" % dim)
+        out.append("_Proposed by %s (dimension %s)._" % (source, dim))
         issues.append({"dimension": dim, "title": title,
                        "labels": [l.strip() for l in labels.group(1).split(",")]
                        if labels else [], "body": "\n".join(out).strip() + "\n"})
@@ -232,15 +236,18 @@ def main(argv=None):
     except (OSError, UnicodeDecodeError) as e:
         print("file_issues: cannot read %s: %s" % (args.card, e), file=sys.stderr)
         return 2
-    problems = card.check(text)
+    crosspollinate = text.startswith("# Box crosspollinate:")
+    problems = card.check_proposal_file(text) if crosspollinate else card.check(text)
     if problems:
-        print("CARD_INVALID: fix the card first")
+        print("PROPOSAL_FILE_INVALID: fix the proposal file first" if crosspollinate
+              else "CARD_INVALID: fix the card first")
         for p in problems:
             print("- " + p)
         return 1
-    issues = [i for i in proposed(text) if not args.only or i["title"] in args.only]
+    source = "box-crosspollinate" if crosspollinate else "a box audit"
+    issues = [i for i in proposed(text, source) if not args.only or i["title"] in args.only]
     if args.only and len(issues) != len(set(args.only)):
-        print("file_issues: --only names a title the card does not have", file=sys.stderr)
+        print("file_issues: --only names a title the file does not have", file=sys.stderr)
         return 2
     problems = [p for i in issues for p in issue_lint.lint(i["body"], i["labels"],
                                                            where=i["title"])]

@@ -51,6 +51,8 @@ box/
                                loader that reads the choice (stdlib Python)
   skills/box-audit/            score a repo against the standard: evidence collectors, an isolated
                                judge, a card check, and filing the proposed issues (stdlib Python)
+  skills/box-crosspollinate/   compare box-audit cards across repos and propose porting each
+                               dimension's strongest practice to the weaker repos (stdlib Python)
   skills/box-bootstrap/        build a Python repo's missing repo-level items on a branch, from
                                templates chosen by the profile, checked by box-audit's collectors
   skills/skill-eval/           test a skill change A vs B: isolated sessions, checks, a blind judge,
