@@ -1108,11 +1108,12 @@ def touches_test(commit):
 def red_test_before(repo, ref, commits, untested):
     """The fixes in `untested` whose test landed in the commit just before, in the same merge:
     red first, the failing test and then the fix. That commit is the fix's only parent, touched a
-    test file and is not itself a fix. It is in the same merge unless the fix came in off the
-    first-parent line of `ref` (through a merge commit) while it is on that line: then it reached
-    `ref` on its own, earlier. A fast-forward leaves no trace of a merge, so two commits on the
-    first-parent line count as one merge. Git is asked for parents only when such a pair could
-    exist: an untested fix, and a commit that is not a fix and touched a test."""
+    test file and is not itself a fix. A fix off the first-parent line of `ref` came in through
+    the oldest merge on that line that holds it; the test is in the same merge only if that
+    merge's first parent does not already hold it. A fast-forward leaves no trace of a merge, so
+    two commits on the first-parent line count as one merge. Git is asked for parents only when
+    such a pair could exist: an untested fix, and a commit that is not a fix and touched a test.
+    Anything git cannot answer gives no credit."""
     red_tests = {c["sha"] for c in commits
                  if touches_test(c) and not FIX_SUBJECT.search(c["subject"])}
     if not untested or not red_tests:
@@ -1124,8 +1125,24 @@ def red_test_before(repo, ref, commits, untested):
     candidates = [c for c in untested if parent.get(c["sha"]) in red_tests]
     if not candidates:
         return []
-    mainline = set((git(repo, "rev-list", "--first-parent", "-n", "1000", ref) or "").split())
-    return [c for c in candidates if c["sha"] in mainline or parent[c["sha"]] not in mainline]
+    # The first-parent line, newest first, each commit with its parents.
+    out = git(repo, "rev-list", "--first-parent", "--parents", "-n", "1000", ref) or ""
+    line = [entry.split() for entry in out.splitlines() if entry.strip()]
+    mainline = {entry[0] for entry in line}
+    return [c for c in candidates if c["sha"] in mainline
+            or same_merge(repo, ref, line, c["sha"], parent[c["sha"]])]
+
+
+def same_merge(repo, ref, line, fix, test):
+    """For a fix off the first-parent line: whether `test` came in with the merge that brought
+    `fix` in, the oldest commit on `line` that holds it, rather than before it."""
+    after = git(repo, "rev-list", "--ancestry-path", "%s..%s" % (fix, ref))
+    holds_fix = set((after or "").split())
+    merge = next((entry for entry in reversed(line) if entry[0] in holds_fix), None)
+    if merge is None or len(merge) < 3:  # not found in the window, or not a merge
+        return False
+    base = git(repo, "merge-base", test, merge[1])  # merge[1] is the merge's first parent
+    return base is not None and base.strip() != test
 
 
 def _local_defects(ctx):
