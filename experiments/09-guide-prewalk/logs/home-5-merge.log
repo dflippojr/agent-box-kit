@@ -1,0 +1,10 @@
+$ (cd ~/sample-lib) echo "# NOT WALKED as written: no GitHub account in the fresh box, so no pull request, required checks or labels. Substitute: local fast-forward merge after the gate passed."; python3 scripts/check.py && git switch -q main && git merge --ff-only -q box-setup && git log --oneline -1 && git branch --show-current
+# NOT WALKED as written: no GitHub account in the fresh box, so no pull request, required checks or labels. Substitute: local fast-forward merge after the gate passed.
+== tests: /usr/local/bin/python3 -m pytest -q -p no:cacheprovider
+..                                                                       [100%]
+2 passed in 0.01s
+GATE_PASS
+89407e7 Fix apostrophe
+main
+[exit 0]
+

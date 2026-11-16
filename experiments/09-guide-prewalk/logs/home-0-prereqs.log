@@ -1,0 +1,5 @@
+$ (cd ~) git --version; python3 --version
+git version 2.47.3
+Python 3.12.16
+[exit 0]
+

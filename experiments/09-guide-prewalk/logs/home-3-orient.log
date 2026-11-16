@@ -1,0 +1,135 @@
+$ (cd ~/sample-lib) git status --short; ls -a; cat README.md pyproject.toml; python3 -m pytest -q; echo; cat ~/agent-skills/agent-ready/templates/AGENTS.md
+?? .box-profile
+?? src/wordcount/__pycache__/
+?? tests/__pycache__/
+.
+..
+.box-profile
+.git
+.pytest_cache
+README.md
+pyproject.toml
+src
+tests
+# wordcount
+
+Count words in text. Run the tests with python3 -m pytest -q.
+[project]
+name = "wordcount"
+version = "0.1.0"
+requires-python = ">=3.8"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+..                                                                       [100%]
+2 passed in 0.01s
+
+# AGENTS.md — <project name>
+
+> Instructions for any coding agent working in this repo. Keep it short. Commands marked "run"
+> were executed on <date>; those marked "not run" were read from the code only. If something here
+> is wrong, fix it in the same change.
+
+## What this project is
+<One or two sentences. Link to the README for more.>
+
+## Commands
+| Purpose | Command | Success looks like |
+|---|---|---|
+| Build | `<cmd>` | <exit 0> |
+| Full test suite | `<cmd>` | <N passed> |
+| One test | `<cmd>` | |
+| Lint / format | `<cmd>` | |
+| Run | `<cmd>`, or **Do not run** (writes to <target>) | <or "not run; read from code"> |
+
+Baseline recorded <date>: <pass/fail counts, pre-existing failures>.
+
+## How to verify a change
+- <area A>: `<cmd>`
+- <area B>: `<cmd>`
+
+## Boundaries
+- Do not edit: <generated code, vendored deps, production config>.
+- Ask the owner first: <schema changes, new dependencies, anything irreversible>.
+- Never: merge, deploy, close issues, publish, or delete things you did not create.
+- Work on a branch or worktree, not the default branch or the owner's live checkout.
+
+## Safety
+- Secrets come from <env vars / .env (git-ignored)>. Never print or commit them.
+- Sensitive data: <what counts, as stated by the owner (do not infer it from names), and how it is kept out of the repo, logs and prompts>.
+- Guardrails in place: <CI check, or a pre-commit hook if the owner wants one>. Never bypass them.
+- Write paths (do not run): <jobs, migrations, deploy scripts and the target each affects>.
+
+## Conventions not obvious from the code
+- <naming, layout, error handling, test style>
+
+## Known quirks
+- <intentionally red tests, flaky tests, slow or dangerous commands>
+
+## Definition of done
+Builds; the task's Verify command passes with visible output; diff is minimal and in scope; no
+secrets or sensitive data; docs updated; you have stated what you did not run or verify.
+
+## Pointers
+- Design docs: <path>
+- Current plan / state: <path>
+- Decisions and rejected options: <path or issue>
+[exit 0]
+
+$ (cd ~/sample-lib) cat > AGENTS.md <<X
+# AGENTS.md — wordcount
+
+> Instructions for any coding agent working in this repo. Keep it short. Commands marked "run"
+> were executed on 2026-11-15; those marked "not run" were read from the code only. If something
+> here is wrong, fix it in the same change.
+
+## What this project is
+A small Python library that counts words in text. See README.md.
+
+## Commands
+| Purpose | Command | Success looks like |
+|---|---|---|
+| Build | none (pure Python, no build step) | |
+| Full test suite | \`python3 -m pytest -q\` (run) | 2 passed |
+| One test | \`python3 -m pytest -q tests/test_wordcount.py::test_top_words\` (run) | 1 passed |
+| Lint / format | none configured | |
+| Run | none: a library, no entry point | |
+
+Baseline recorded 2026-11-15: 2 passed, 0 failed.
+
+## How to verify a change
+- src/wordcount: \`python3 -m pytest -q\`
+
+## Boundaries
+- Ask the owner first: new dependencies, anything irreversible.
+- Never: merge, deploy, close issues, publish, or delete things you did not create.
+- Work on a branch, not the default branch.
+
+## Safety
+- No secrets or write paths: the library reads only its arguments.
+
+## Definition of done
+Tests pass with visible output; diff is minimal and in scope; you have stated what you did not
+run or verify.
+X
+python3 -m pytest -q tests/test_wordcount.py::test_top_words
+git switch -c box-setup
+git add AGENTS.md .box-profile
+git commit -m "Add AGENTS.md and box profile"
+git status
+.                                                                        [100%]
+1 passed in 0.00s
+Switched to a new branch 'box-setup'
+[box-setup 08e781a] Add AGENTS.md and box profile
+ 2 files changed, 35 insertions(+)
+ create mode 100644 .box-profile
+ create mode 100644 AGENTS.md
+On branch box-setup
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	src/wordcount/__pycache__/
+	tests/__pycache__/
+
+nothing added to commit but untracked files present (use "git add" to track)
+[exit 0]
+

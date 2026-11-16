@@ -70,6 +70,8 @@ experiments/05-evaluator/      synthetic experiment behind module 05's evaluator
 experiments/06-skill-eval/     skill-eval's proof run on agent-ready (harmful and no-op edits)
 experiments/07-rule-mining/    reading pass over four public skill bundles: coverage, contradictions,
                                up to 10 proposed rules; proposals only, not part of the skill
+experiments/09-guide-prewalk/  GUIDE.md walked on a fresh container: run logs per step, the gaps found
+                               and how each was fixed
 ci/                            pinned test and coverage requirements used by CI and Dependabot
 GUIDE.md                       zero to a 9/10 box, step by step
 EVIDENCE.md                    where each rule came from and how well it is evidenced

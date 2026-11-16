@@ -1,0 +1,15 @@
+$ (cd ~) mkdir -p cards && python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/audit.py ~/sample-lib --out ~/cards --judge-line "isolated: fresh session started by the harness from prompt.md only; probe not run" --bundle-only ~/bundle-before; echo rc=$?; ls ~/bundle-before
+~/bundle-before/prompt.md
+rc=0
+evidence.md
+prompt.md
+[exit 0]
+
+$ (cd ~) echo "# judge answer saved as the card (fresh session given only prompt.md)"; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/card.py check ~/cards/box-audit-sample-lib-2026-11-15.md; echo rc=$?; grep -n "^- Score\|^- Proven" ~/cards/box-audit-sample-lib-2026-11-15.md
+# judge answer saved as the card (fresh session given only prompt.md)
+CARD_OK
+rc=0
+7:- Score: `G ✗ · R ✗ · J ✗ · W ~ · P – · D ✗ → 5`
+8:- Proven: 1.0
+[exit 0]
+

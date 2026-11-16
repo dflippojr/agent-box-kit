@@ -1,0 +1,23 @@
+$ (cd ~) python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/audit.py ~/sample-corp --no-remote --out ~/corp-cards --judge-line "isolated: fresh session started by the harness from prompt.md only; probe not run" --bundle-only ~/corp-bundle-after; echo rc=$?
+~/corp-bundle-after/prompt.md
+rc=0
+[exit 0]
+
+$ (cd ~) echo "# second re-audit after one loop (bug-hunt pass + fix)"; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/audit.py ~/sample-corp --no-remote --out ~/corp-cards --judge-line "isolated: fresh session started by the harness from prompt.md only; probe not run" --bundle-only ~/corp-bundle-loop1; echo rc=$?; grep -n -A8 "^## defects" ~/corp-bundle-loop1/evidence.md
+# second re-audit after one loop (bug-hunt pass + fix)
+~/corp-bundle-loop1/prompt.md
+rc=0
+88:## defects (unavailable: skipped with --no-remote)
+89-- [verified] last 6 non-merge commits on main: 1 look like fixes, 0 of those touched a test file, 0 reverts  (git log)
+90-- [verified] acff74c47e 2026-11-16 Fix: top_words raises ValueError for a negative n (closes #1) (no test file changed)  (git log)
+91-
+[exit 0]
+
+$ (cd ~) echo "# judge answer for the first re-audit saved as the card"; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/card.py check ~/corp-cards/box-audit-sample-corp-2026-11-16.md; echo rc=$?; grep "^- Score\|^- Proven" ~/corp-cards/box-audit-sample-corp-2026-11-16.md
+# judge answer for the first re-audit saved as the card
+CARD_OK
+rc=0
+- Score: `G ~ · R – · J ✗ · W ~ · P – · D ✗ → 7`
+- Proven: 2.5
+[exit 0]
+
