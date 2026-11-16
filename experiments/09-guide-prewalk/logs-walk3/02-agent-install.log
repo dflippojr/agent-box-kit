@@ -1,0 +1,7 @@
+$ (cd ~) # GUIDE.md names no way to get an agent (gap G14). A new user follows the agent's own docs.
+$ (cd ~) <download and run an agent CLI's public no-sudo installer, inside the container>
+[NOT RUN: the walker's harness refused to download and run an installer from this session. Not worked around.]
+
+# Steps 2 (ask the agent to find the skill) and 4a (judge.py probe) stop here. Even with the CLI
+# installed, both need it signed in (a login or an API key in the container), which this walk
+# must not supply from the host. NEEDS OWNER.

@@ -127,3 +127,21 @@ commit` listing `?? box-setup.md`; after the guide's `mv` it went on to the tamp
 | G13 | `tests/test_guide.py` matched flags as prefixes, so `--out2` passed as `--out` (found by the review). | It compares whole option names with the help's options; a negative test proves `--out2`, `--outdir` and `--out2=...` fail it. |
 
 Walker error, marked in the log: the bug-hunt draft first named the wrong introducing commit.
+
+# Walk 3: steps 2 and 4a with a real agent (2026-11-16, stopped)
+
+The second review asked for step 2 (the agent finds the skill) and step 4a (the isolation probe)
+to be walked with a real agent installed the way the guide says. `logs-walk3/`: a third new
+container, set up as before, empty home, no agent and no key or token variables.
+
+- The guide named no way to get an agent or sign it in (G14). Fixed: Before you start now says
+  to install one from its own docs, sign it in, and check it answers a one-line prompt.
+- Installing an agent CLI's public installer inside the container was refused by the walker's
+  harness. It was not worked around.
+- Both steps also need the agent signed in, with a login or an API key inside the container. The
+  walk must not copy one from the host, so steps 2 and 4a are **not walked** and wait for the
+  owner (see issue #8).
+
+| # | Gap | Fix |
+|---|---|---|
+| G14 | No pointer for getting the agent prerequisite installed and signed in. | Added to Before you start. |

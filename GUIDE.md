@@ -8,9 +8,9 @@ Steps marked **home** or **corporate** apply to that profile only. Everything el
 both.
 
 Every command below was run on 2026-11-16 in a fresh Linux container (Python 3.12, git 2.47) with
-none of this kit installed. Steps that need an agent CLI or a GitHub account were not run there:
-4a, 4b with a judge command (its bundle form was run instead), and the GitHub parts of
-5 and 6. Windows and macOS were not tried.
+none of this kit installed. Steps that need a signed-in agent CLI or a GitHub account were not
+run there: asking the agent in step 2, 4a, 4b with a judge command (its bundle form was run
+instead), and the GitHub parts of 5 and 6. Windows and macOS were not tried.
 
 ## Before you start
 
@@ -20,7 +20,10 @@ You need:
   `python3 --version` (on Windows, `python --version`, and write `python` wherever this guide
   writes `python3`).
 - **An agent** that can load skills and run commands in a repo, and its command-line form in
-  non-interactive mode (reads a prompt on stdin, prints the answer). Step 4 uses it as the judge.
+  non-interactive mode (reads a prompt on stdin, prints the answer). This kit names none: install
+  one the way its own docs say, and sign it in (a login or an API key). Steps 2 and 3 use it as
+  your agent, step 4 as the judge. Check it answers before you go on: pipe it a one-line prompt
+  and see a reply.
 - **A Python repo** to work on, checked out locally with at least one commit, whose tests run with
   `python3 -m pytest` (if pytest is missing: `python3 -m pip install --user pytest`).
   box-bootstrap supports Python only, and the gate it writes runs pytest.
