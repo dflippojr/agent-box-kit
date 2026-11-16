@@ -47,8 +47,8 @@ python3 -B <kit>/box/profiles/profile.py <repo>
 
 (Write `corporate` in place of `home` for the corporate profile.)
 
-**You should see** the profile printed as JSON, starting `{"name": "home"` (or `"corporate"`),
-and exit code 0.
+**You should see** the profile printed as JSON, with `"name": "home"` (or `"corporate"`) on its
+second line.
 
 **If not:** exit 3 means there is no `.box-profile` in the folder you named; check the path. Exit
 2 means the file holds something other than one name; write it again with the command above.
@@ -78,7 +78,8 @@ git commit -m "Add AGENTS.md and box profile"
 ```
 
 **You should see** an `AGENTS.md` whose every command is marked *run* or *not run*, and a
-baseline (how many tests pass and fail today). `git status` shows a clean tree.
+baseline (how many tests pass and fail today). `git status` shows nothing to commit; untracked
+caches such as `__pycache__/` are fine. Step 5 adds to this same `box-setup` branch.
 
 **If not:** if the agent cannot find a test command, or the tests do not run, fix that first.
 Later steps build a gate on top of the test suite, and a gate that runs nothing fails.
@@ -126,11 +127,13 @@ judge failed or wrote an invalid card; the problems are printed.
 ## 5. Run box-bootstrap
 
 Bootstrap writes the repo-level items the audit looks for (gate script, CI or `ready` script,
-tamper guard, PR template and lint, docs stubs) and commits them on a new branch. See
-[its skill](box/skills/box-bootstrap/SKILL.md) for the full list.
+tamper guard, PR template and lint, docs stubs) and commits them. See
+[its skill](box/skills/box-bootstrap/SKILL.md) for the full list. Give it the step-3 branch:
+without `--branch`, it starts a new branch from the default branch, which does not have your
+`AGENTS.md` yet, and writes a blank template in its place.
 
 ```
-python3 -B <kit>/box/skills/box-bootstrap/scripts/bootstrap.py <repo>
+python3 -B <kit>/box/skills/box-bootstrap/scripts/bootstrap.py <repo> --branch box-setup
 cd <repo>
 python3 scripts/check.py
 ```
@@ -144,8 +147,9 @@ of **owner steps** (settings only you can change). `scripts/check.py` runs your 
 **If not:** exit 1 lists each missing item with the reason; fix it by hand and run bootstrap
 again. If `check.py` fails because no tests ran, write real tests; do not add a placeholder.
 
-Then ask the agent to fill in the stubs (`AGENTS.md`, `docs/`, the verify skill) from the code,
-do the owner steps, and merge the branch the way your repo merges (**home**: a pull request whose
+Then ask the agent to replace every `<...>` placeholder bootstrap left (in `docs/` and
+`.agents/skills/verify/SKILL.md`) with what the code says, and commit. Do the owner steps
+bootstrap printed, and merge the branch the way your repo merges (**home**: a pull request whose
 checks pass; **corporate**: `scripts/ready.py` exits 0 on its head commit).
 
 ## 6. Re-audit until the card scores 9
