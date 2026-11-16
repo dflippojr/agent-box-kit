@@ -1,0 +1,55 @@
+$ (cd ~/sample-lib) echo "# description written from .github/pull_request_template.md"; grep -n "^#" .github/pull_request_template.md; mkdir -p ~/notes && cat > ~/notes/box-setup.md <<X
+## What and why
+
+Set up the agent box: AGENTS.md, the box profile, and the items box-bootstrap writes.
+
+Closes #1
+
+## Proof
+
+| Acceptance criterion | How verified | Evidence |
+|---|---|---|
+| The gate runs the tests | python3 scripts/check.py | 2 passed, GATE_PASS |
+
+### Not verified
+
+The hosted checks: they run when the pull request opens.
+
+### Gate changes
+
+Adds the gate: scripts/check.py, scripts/tamper_guard.py, scripts/pr_body_lint.py and the two workflows.
+X
+echo "# NOT WALKED: push and open the pull request; required checks; the gate-change-approved label (GitHub account). Local stand-in: the commands pr-checks.yml runs"; grep -n "run:" -A2 .github/workflows/pr-checks.yml | grep "python"
+python3 scripts/tamper_guard.py --base main; echo rc=$?
+python3 scripts/tamper_guard.py --base main --approved | tail -1; echo rc=$?
+printf "%s\n" "$(cat ~/notes/box-setup.md)" | python3 scripts/pr_body_lint.py -; echo rc=$?
+python3 scripts/check.py | tail -1
+# description written from .github/pull_request_template.md
+1:## What and why
+7:## Proof
+17:### Not verified
+21:### Gate changes
+# NOT WALKED: push and open the pull request; required checks; the gate-change-approved label (GitHub account). Local stand-in: the commands pr-checks.yml runs
+28-          python scripts/tamper_guard.py --base "$BASE_SHA" "$@"
+40:        run: printf '%s\n' "$PR_BODY" | python scripts/pr_body_lint.py -
+GATE CHANGE: edits gate config .box-profile
+GATE CHANGE: edits gate config .github/pull_request_template.md
+GATE CHANGE: edits gate config .github/workflows/gate.yml
+GATE CHANGE: edits gate config .github/workflows/pr-checks.yml
+GATE CHANGE: edits gate config scripts/check.py
+GATE CHANGE: edits gate config scripts/pr_body_lint.py
+GATE CHANGE: edits gate config scripts/tamper_guard.py
+TAMPER_GUARD_FAIL: 7 gate change(s) need the owner's explicit approval
+rc=1
+TAMPER_GUARD_PASS: 7 gate change(s), approved by the owner
+rc=0
+PR_BODY_PASS
+rc=0
+GATE_PASS
+[exit 0]
+
+$ (cd ~/sample-lib) echo "# stand-in for the PR merge (no GitHub): local fast-forward of the branch whose checks passed above"; git switch -q main && git merge --ff-only -q box-setup && git log --oneline -1
+# stand-in for the PR merge (no GitHub): local fast-forward of the branch whose checks passed above
+0566dff Fill in docs and verify skill from the code
+[exit 0]
+

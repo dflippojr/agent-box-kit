@@ -1,0 +1,46 @@
+$ (cd ~/sample-lib) echo "# bug-hunt pass per queue-fill: date, commit, adversarial inputs, trace"; date -u +%F; git rev-parse --short=12 main; PYTHONPATH=src python3 -c "import wordcount as w; print(repr(w.top_words(\"a b c\", -1)), repr(w.count_words(\"\")))"; git log --format="%h %s" -L "/def top_words/,+5:src/wordcount/__init__.py" | grep -E "^[0-9a-f]{7} "
+mkdir -p ~/hunt-drafts && cat > ~/hunt-drafts/negative-n.md <<X
+---
+title: Bug hunt: top_words returns words for a negative n
+labels: bug, tier:mechanical, ready
+---
+## Problem
+Found by: bug hunt 2026-11-16 at $(git rev-parse --short=12 main)
+Introducing change: $(git rev-parse --short=7 main~2)
+CI-catchable: yes
+
+top_words("a b c", -1) returns ["a", "b"]. Its docstring promises the n most common words, so a
+negative n should raise ValueError rather than drop the last word.
+
+## Want
+- A test that top_words with a negative n raises ValueError fails today and passes after the fix.
+
+## Constraints
+- Tests go in tests/test_wordcount.py. Attach the failing test output first.
+
+## Dependencies
+Dependencies: none
+
+## Out of scope
+Changing how words are split.
+X
+echo "# NOT WALKED as written: hunt.py --repo reads labels and open titles through gh (GitHub account). Stand-in: the same check with --offline"; python3 -B ~/agent-box-kit/box/skills/queue-fill/scripts/hunt.py ~/hunt-drafts --repo example/sample-lib 2>&1 | tail -1; python3 -B ~/agent-box-kit/box/skills/queue-fill/scripts/hunt.py ~/hunt-drafts --repo example/sample-lib --offline | head -3; echo rc=${PIPESTATUS[0]}
+# bug-hunt pass per queue-fill: date, commit, adversarial inputs, trace
+2026-11-16
+0566dffa61d5
+['a', 'b'] 0
+fb3409c Initial commit
+# NOT WALKED as written: hunt.py --repo reads labels and open titles through gh (GitHub account). Stand-in: the same check with --offline
+hunt: gh CLI not found
+DRY RUN: 1 proposed issues for example/sample-lib (offline: labels and duplicates not checked)
+
+=== [D] Bug hunt: top_words returns words for a negative n
+rc=0
+[exit 0]
+
+$ (cd ~) echo "# walker error: Introducing change named the wrong commit; set to the traced one"; sed -i "s/^Introducing change: .*/Introducing change: fb3409c/" ~/hunt-drafts/negative-n.md; grep -n "Introducing" ~/hunt-drafts/negative-n.md; python3 -B ~/agent-box-kit/box/skills/queue-fill/scripts/hunt.py ~/hunt-drafts --repo example/sample-lib --offline | head -1
+# walker error: Introducing change named the wrong commit; set to the traced one
+7:Introducing change: fb3409c
+DRY RUN: 1 proposed issues for example/sample-lib (offline: labels and duplicates not checked)
+[exit 0]
+

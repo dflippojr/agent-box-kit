@@ -1,0 +1,41 @@
+$ (host) docker run -d --name prewalk --memory 1g --cpus 1 python:3.12-slim sleep 10800
+[container started from the public python:3.12-slim image]
+
+$ (container, root) apt-get install git; useradd -m dev
+git version 2.47.3
+Python 3.12.16
+
+$ (cd ~) echo "# empty-home and no-tooling checks"; id -un; ls -A ~; for c in gh claude codex gemini pytest; do printf "%s: " $c; command -v $c || echo none; done; ls ~/.config ~/.agents ~/.claude ~/.codex 2>&1; python3 -m pytest --version 2>&1 | tail -1
+# empty-home and no-tooling checks
+dev
+.bash_logout
+.bashrc
+.profile
+gh: none
+claude: none
+codex: none
+gemini: none
+pytest: none
+ls: cannot access '~/.config': No such file or directory
+ls: cannot access '~/.agents': No such file or directory
+ls: cannot access '~/.claude': No such file or directory
+ls: cannot access '~/.codex': No such file or directory
+/usr/local/bin/python3: No module named pytest
+[exit 0]
+
+$ (cd ~) echo "# the kit, as a new user downloads it: an unpacked archive of the branch head"; tar xf /tmp/kit.tar && rm /tmp/kit.tar && ls agent-box-kit && git config --global user.name "Sample Dev" && git config --global user.email dev@example.com
+# the kit, as a new user downloads it: an unpacked archive of the branch head
+AGENTS.md
+CLAUDE.md
+EVIDENCE.md
+GUIDE.md
+LICENSE
+README.md
+agent-ready
+box
+ci
+experiments
+sonar-project.properties
+tests
+[exit 0]
+

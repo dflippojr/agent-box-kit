@@ -1,0 +1,32 @@
+$ (cd ~) echo "# the new user s own repo: a two-function library, one commit"; mkdir -p sample-lib/src/wordcount sample-lib/tests && cd sample-lib && git init -q -b main && printf "[project]\nname = \"wordcount\"\nversion = \"0.1.0\"\nrequires-python = \">=3.8\"\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\n" > pyproject.toml && cat > src/wordcount/__init__.py <<X
+"""Count words in text."""
+
+
+def count_words(text):
+    """Return the number of whitespace-separated words in text."""
+    return len(text.split())
+
+
+def top_words(text, n=3):
+    """Return the n most common lower-cased words, most common first, ties alphabetical."""
+    counts = {}
+    for word in text.lower().split():
+        counts[word] = counts.get(word, 0) + 1
+    return sorted(counts, key=lambda w: (-counts[w], w))[:n]
+X
+cat > tests/test_wordcount.py <<X
+from wordcount import count_words, top_words
+
+
+def test_count_words():
+    assert count_words("a b  c") == 3
+
+
+def test_top_words():
+    assert top_words("b a b c a b", 2) == ["b", "a"]
+X
+printf "# wordcount\n\nCount words in text.\n" > README.md && git add -A && git commit -qm "Initial commit" && git log --oneline
+# the new user s own repo: a two-function library, one commit
+fb3409c Initial commit
+[exit 0]
+

@@ -4,6 +4,12 @@ Before an outside user walks [`GUIDE.md`](../../GUIDE.md), an agent walked it on
 disposable environment, followed it literally, and fixed the gaps it hit (issue #8). This is the
 record. Not part of the skill.
 
+There were two walks. Walk 1 (`logs/`) wrote the gap list below. Walk 2 (`logs-walk2/`, at the
+end) re-walked the fixed guide after the first review: every home step that runs without a GitHub
+account, in a new container whose setup is logged, plus the corporate step 5 fix.
+
+# Walk 1
+
 ## Environment
 
 - A new container from the public `python:3.12-slim` image: Python 3.12, git 2.47 (installed in the
@@ -70,3 +76,54 @@ Walker errors, not guide gaps, are marked in the logs: a quoted `title:` in a bu
 - Corporate model access through a cloud provider: no account; nothing in the guide's steps
   calls it except the judge.
 - Windows and macOS.
+
+# Walk 2: after the first review (2026-11-16)
+
+Scope, from issue #8 as amended by the owner on 2026-11-16: walk every home-profile step that can
+run without a GitHub account, and name each step not walked. The home profile's GitHub-account
+steps (opening a PR, its checks, the approval label, filing issues, and the loop to 9) are left to
+the outside-user walk the owner arranges.
+
+## Environment
+
+A second new container from `python:3.12-slim`, set up and checked in
+`logs-walk2/00-environment.log`: git installed as root in the container, a new user `dev`, its
+home holding only the shell's default dotfiles, no agent CLI, no `gh`, no pytest. The kit was
+unpacked from an archive of the branch head with the round-1 fixes. The sample repo was made from
+scratch (`01-sample-repo.log`); every file the walking agent wrote was written again in this
+container, nothing carried over from walk 1.
+
+## Steps (home profile)
+
+| Step | Result | Log |
+|---|---|---|
+| Before you start | pass; pytest was missing and the guide's new install command fixed it (G11) | `home-0-prereqs` |
+| 1 Pick a profile | pass | `home-1-profile` |
+| 2 Install the skill | pass, copied; no agent to ask | `home-2-skill` |
+| 3 Orient the repo | pass | `home-3-orient` |
+| 4a Probe the judge | **not walked**: needs an agent CLI and a personal instruction file | `home-4a-probe` |
+| 4b Audit | pass, bundle form; no `origin`, so host evidence unavailable; card `CARD_OK`, `G ✗ · R ✗ · J ✗ · W ~ · P – · D ✗ → 5` | `home-4b-audit` |
+| 5 Bootstrap, gate, fill stubs | pass: `BOOTSTRAP_DONE`, `GATE_PASS`, no placeholders left | `home-5-bootstrap` |
+| 5 Write the description | pass, from `.github/pull_request_template.md` | `home-5-merge` |
+| 5 Push, open the PR, required checks, approval label, merge | **not walked** (GitHub account). Stand-in: the commands `pr-checks.yml` runs, locally: `tamper_guard.py` fails on the bootstrap branch (7 gate changes) and passes with `--approved`; `pr_body_lint.py` passes; then a local fast-forward | `home-5-merge` |
+| 6 Re-audit | pass, bundle form; card `CARD_OK`, `G ~ · R ~ · J ✗ · W ~ · P – · D ✗ → 7`; `--offline` filing dry run lists 10 proposals | `home-6-reaudit` |
+| 6.2 File the proposals | **not walked** as written: `file_issues.py --repo` stops with `gh CLI not found`. Stand-in: the `--offline` dry run | `home-6-file` |
+| 6.3 Work an issue | walked up to the PR: red test (`GATE_FAIL`), fix (`GATE_PASS`), tamper guard `no gate change`, body lint pass. **Not walked**: the PR and merge on green; local fast-forward instead | `home-6-fix` |
+| 6.4 Bug-hunt pass | walked: dated pass, finding reproduced and traced, draft checked. **Not walked** as written: `hunt.py --repo` stops with `gh CLI not found`; `--offline` dry run instead | `home-6-bughunt` |
+| 6.5 Re-audit | bundle written; D is unavailable without a remote, and the red-test-then-fix commits read as a fix with no test (#29) | `home-6-reaudit` |
+| Loop to 9 | **not walked** (GitHub account, per the amendment) | |
+
+Corporate step 5, re-walked for G12 (`corp-5-description.log`): with the description saved inside
+the checkout, `ready.py` ended `NOT_READY: the working tree has changes that are not in the head
+commit` listing `?? box-setup.md`; after the guide's `mv` it went on to the tamper-guard
+`NOT_READY`, then `READY` after the owner tag, and merged.
+
+## Gaps found in walk 2 and the first review
+
+| # | Gap | Fix |
+|---|---|---|
+| G11 | "install pytest if they don't" gave no command, and a fresh box has no pytest. | `python3 -m pip install --user pytest` in Before you start. |
+| G12 | The corporate description file had no location; saved inside the checkout, `ready.py` refuses the working tree (found by the review, reproduced here). | Step 5 says to save it outside the repo, with `~/notes/box-setup.md` as the example, and gives the recovery. |
+| G13 | `tests/test_guide.py` matched flags as prefixes, so `--out2` passed as `--out` (found by the review). | It compares whole option names with the help's options; a negative test proves `--out2`, `--outdir` and `--out2=...` fail it. |
+
+Walker error, marked in the log: the bug-hunt draft first named the wrong introducing commit.

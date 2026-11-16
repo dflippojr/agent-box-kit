@@ -1,0 +1,21 @@
+$ (cd ~) echo "# corporate step 5, re-walked for the description-file fix: fresh copy of the sample repo at its first commit"; git clone -q sample-lib sample-corp && cd sample-corp && git reset -q --hard fb3409c && git remote remove origin
+python3 -c "open(\".box-profile\", \"w\").write(\"corporate\n\")"; git -C ~/sample-lib show main:AGENTS.md | sed "/^## Proving a change/,\$d" > AGENTS.md; git switch -q -c box-setup; git add AGENTS.md .box-profile; git commit -qm "Add AGENTS.md and box profile"
+python3 -B ~/agent-box-kit/box/skills/box-bootstrap/scripts/bootstrap.py ~/sample-corp --branch box-setup | tail -1
+python3 /tmp/fill_stubs.py ~/sample-corp >/dev/null; git add -A docs .agents; git commit -qm "Fill in docs and verify skill from the code"; python3 scripts/check.py | tail -1
+echo "# the mistake the guide now warns about: description saved inside the checkout"; cp ~/notes/box-setup.md box-setup.md; python3 scripts/ready.py --body box-setup.md; echo rc=$?
+echo "# the guide s recovery"; mv box-setup.md ~/notes/; python3 scripts/ready.py --body ~/notes/box-setup.md | tail -1
+H=$(git rev-parse HEAD); git tag gate-change-approved/$H $H; python3 scripts/ready.py --body ~/notes/box-setup.md | tail -1; git switch -q main; git merge --ff-only -q $H; git log --oneline -1
+# corporate step 5, re-walked for the description-file fix: fresh copy of the sample repo at its first commit
+BOOTSTRAP_DONE: every repo-level item bootstrap can create is present on box-setup
+GATE_PASS
+# the mistake the guide now warns about: description saved inside the checkout
+Judging head commit 0d8ff9da834cf87a473f990630ea530b2ceecf92 against main
+NOT_READY: the working tree has changes that are not in the head commit:
+?? box-setup.md
+rc=1
+# the guide s recovery
+NOT_READY at 0d8ff9da834cf87a473f990630ea530b2ceecf92: tamper guard
+READY: merge 0d8ff9da834cf87a473f990630ea530b2ceecf92 and nothing else
+0d8ff9d Fill in docs and verify skill from the code
+[exit 0]
+

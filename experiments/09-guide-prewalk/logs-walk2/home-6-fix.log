@@ -1,0 +1,51 @@
+$ (cd ~/sample-lib) echo "# 6.3: work the finding with agent-ready (red test, fix, gate), up to the pull request"; git switch -q -c fix-negative-n && cat >> tests/test_wordcount.py <<X
+
+
+def test_top_words_rejects_negative_n():
+    import pytest
+    with pytest.raises(ValueError):
+        top_words("a b c", -1)
+X
+git commit -qam "Test: top_words rejects a negative n (red)"; python3 scripts/check.py | tail -2
+python3 - <<X
+p = "src/wordcount/__init__.py"
+s = open(p).read().replace("    counts = {}\n", "    if n < 0:\n        raise ValueError(\"n must not be negative\")\n    counts = {}\n", 1)
+open(p, "w").write(s)
+X
+git commit -qam "Fix: top_words raises ValueError for a negative n"; python3 scripts/check.py | tail -1
+cat > ~/notes/fix-1.md <<X
+## What and why
+
+top_words now raises ValueError for a negative n instead of dropping words.
+
+Closes #2
+
+## Proof
+
+| Acceptance criterion | How verified | Evidence |
+|---|---|---|
+| A negative-n test fails before and passes after | python3 scripts/check.py on each commit | before: 1 failed, GATE_FAIL; after: 3 passed, GATE_PASS |
+
+### Not verified
+
+Nothing else: the library has no running instance.
+
+### Gate changes
+
+none
+X
+echo "# local stand-in for pr-checks (no GitHub)"; python3 scripts/tamper_guard.py --base main; echo rc=$?; python3 scripts/pr_body_lint.py ~/notes/fix-1.md; echo rc=$?
+echo "# NOT WALKED: open the pull request and merge on green checks. Stand-in: local fast-forward"; git switch -q main && git merge --ff-only -q fix-negative-n && git log --oneline -1
+# 6.3: work the finding with agent-ready (red test, fix, gate), up to the pull request
+1 failed, 2 passed in 0.02s
+GATE_FAIL: tests
+GATE_PASS
+# local stand-in for pr-checks (no GitHub)
+TAMPER_GUARD_PASS: no gate change
+rc=0
+PR_BODY_PASS
+rc=0
+# NOT WALKED: open the pull request and merge on green checks. Stand-in: local fast-forward
+87d2a90 Fix: top_words raises ValueError for a negative n
+[exit 0]
+

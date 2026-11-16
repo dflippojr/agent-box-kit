@@ -1,0 +1,7 @@
+$ (cd ~/sample-lib) python3 -c "open('.box-profile', 'w').write('home\n')"; python3 -B ~/agent-box-kit/box/profiles/profile.py ~/sample-lib | sed -n 1,3p; echo rc=${PIPESTATUS[0]}
+{
+  "name": "home",
+  "model_access": {
+rc=0
+[exit 0]
+

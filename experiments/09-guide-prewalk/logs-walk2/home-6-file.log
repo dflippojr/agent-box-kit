@@ -1,0 +1,10 @@
+$ (cd ~) echo "# 6.2 as written (home)"; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/file_issues.py ~/cards-after/box-audit-sample-lib-2026-11-16.md --repo example/sample-lib; echo rc=$?; echo "# NOT WALKED as written (gh and a GitHub account). Stand-in: the offline dry run"; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/file_issues.py ~/cards-after/box-audit-sample-lib-2026-11-16.md --repo example/sample-lib --offline > ~/file-dry.txt; echo rc=$?; head -1 ~/file-dry.txt; grep -c "^=== " ~/file-dry.txt
+# 6.2 as written (home)
+file_issues: gh CLI not found
+rc=2
+# NOT WALKED as written (gh and a GitHub account). Stand-in: the offline dry run
+rc=0
+DRY RUN: 10 proposed issues for example/sample-lib (offline: labels and duplicates not checked)
+10
+[exit 0]
+

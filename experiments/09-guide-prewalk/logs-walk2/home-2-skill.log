@@ -1,0 +1,6 @@
+$ (cd ~) echo "# skills folder for this walk: ~/agent-skills (no agent installed to read it)"; mkdir -p ~/agent-skills && cp -r ~/agent-box-kit/agent-ready ~/agent-skills/ && ls ~/agent-skills/agent-ready/SKILL.md && grep -c "01-orient-a-repo.md" ~/agent-skills/agent-ready/SKILL.md
+# skills folder for this walk: ~/agent-skills (no agent installed to read it)
+~/agent-skills/agent-ready/SKILL.md
+1
+[exit 0]
+
