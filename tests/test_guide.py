@@ -160,3 +160,21 @@ def test_every_script_accepts_the_flags_shown():
                 problems.append("%s: %s is shown, but no script this section runs accepts it"
                                 % (heading or "(intro)", flag))
     assert not problems, problems
+
+
+def test_a_flag_the_script_rejects_fails_the_check(monkeypatch):
+    # A digit-suffixed or longer spelling of a real flag is a different flag: audit.py rejects
+    # `--out2`, so the check must too, not match it as a prefix of `--out`.
+    text = guide_text()
+    for good, bad in (("--out <cards folder>", "--out2 <cards folder>"),
+                      ("--out <cards folder>", "--outdir <cards folder>"),
+                      ("--out <cards folder>", "--out2=<cards folder>")):
+        assert good in text
+        monkeypatch.setattr(sys.modules[__name__], "guide_text",
+                            lambda t=text.replace(good, bad, 1): t)
+        try:
+            test_every_script_accepts_the_flags_shown()
+        except AssertionError as e:
+            assert bad.split()[0].split("=")[0] in str(e), e
+        else:
+            raise AssertionError("the check accepted %s" % bad)
