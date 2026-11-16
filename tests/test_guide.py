@@ -7,7 +7,8 @@ and are not checked here.
 
 Scripts: every `<kit>/....py` the guide runs, inside a code block or a backticked span, must exit
 0 on `--help` (after its subcommand, such as `judge.py probe`, where the script accepts it
-there), and every `--flag` shown with it must appear in that help. A flag the prose mentions
+there), and every `--flag` shown with it must be an option that help lists, compared by its
+whole name (`--out2` is not `--out`; a `=value` is split off). A flag the prose mentions
 on its own (add `--no-remote`) must appear in the help of a script the same section runs.
 The scripts bootstrap writes into the user's repo are checked from their templates when the
 guide shows them with a flag.
@@ -27,7 +28,14 @@ GENERATED = {
     "scripts/pr_body_lint.py": "box/skills/box-bootstrap/templates/scripts/pr_body_lint.py",
     "scripts/tamper_guard.py": "box/skills/box-bootstrap/templates/scripts/tamper_guard.py",
 }
-FLAG = re.compile(r"(?<![\w-])--[a-z][a-z-]*")
+# A whole option name: it ends at whitespace, `=`, or punctuation, so `--out2` and `--out=DIR`
+# are read as `--out2` and `--out`, never as a prefix match.
+FLAG = re.compile(r"(?<![\w-])--[A-Za-z0-9][\w-]*")
+
+
+def options(help_text):
+    """The exact option names a script's --help lists."""
+    return set(FLAG.findall(help_text))
 
 
 def guide_text():
@@ -77,7 +85,8 @@ def help_text(path, sub):
         if args is None:
             continue
         proc = subprocess.run([sys.executable, "-B", str(ROOT / path)] + args,
-                              capture_output=True, text=True, timeout=60)
+                              capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=60)
         if proc.returncode == 0:
             return 0, proc.stdout + proc.stderr
     return proc.returncode, proc.stdout + proc.stderr
@@ -152,11 +161,12 @@ def test_every_script_accepts_the_flags_shown():
                 if rc != 0:
                     problems.append("%s: %s --help exits %d" % (heading, path, rc))
                     continue
-                helps.append(text)
+                accepted = options(text)
+                helps.append(accepted)
                 problems.extend("%s: %s does not accept %s" % (heading, path, f)
-                                for f in flags if f not in text)
+                                for f in flags if f not in accepted)
         for flag in sorted(prose_flags - {"--help"}):
-            if not any(flag in text for text in helps):
+            if not any(flag in accepted for accepted in helps):
                 problems.append("%s: %s is shown, but no script this section runs accepts it"
                                 % (heading or "(intro)", flag))
     assert not problems, problems
