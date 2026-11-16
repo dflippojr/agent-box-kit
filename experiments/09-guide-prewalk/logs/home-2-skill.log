@@ -1,0 +1,8 @@
+$ (cd ~) mkdir -p ~/agent-skills && cp -r ~/agent-box-kit/agent-ready ~/agent-skills/ && ls ~/agent-skills/agent-ready && grep -n "orient" ~/agent-skills/agent-ready/SKILL.md
+SKILL.md
+modules
+scripts
+templates
+40:| New to a repo, or asked to make it agent-ready / write AGENTS.md | `modules/01-orient-a-repo.md` |
+[exit 0]
+

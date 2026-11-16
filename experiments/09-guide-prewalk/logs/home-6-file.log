@@ -1,0 +1,17 @@
+$ (cd ~) python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/file_issues.py ~/cards-after/box-audit-sample-lib-2026-11-16.md --repo example/sample-lib 2>&1 | tail -3; echo rc=$?; echo "# no gh and no GitHub account here; the offline dry run instead:"; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/file_issues.py ~/cards-after/box-audit-sample-lib-2026-11-16.md --repo example/sample-lib --offline | head -8; echo rc=${PIPESTATUS[0]}
+file_issues: gh CLI not found
+rc=0
+# no gh and no GitHub account here; the offline dry run instead:
+DRY RUN: 12 proposed issues for example/sample-lib (offline: labels and duplicates not checked)
+
+=== [G] Add a ready script that runs the gate on the head commit before any merge
+Labels: tier:standard, ready, P0
+
+## Problem
+The repo has no remote, so no host enforces the `gate`, `tamper-guard` or `pr-body` checks. AGENTS.md says a red head commit cannot merge, but nothing mechanical makes that true. The standard's fallback for an unenforced host is a `ready` script that every merge goes through.
+
+Exception ignored in: <_io.TextIOWrapper name='<stdout>' mode='w' encoding='utf-8'>
+BrokenPipeError: [Errno 32] Broken pipe
+rc=120
+[exit 0]
+

@@ -1,0 +1,8 @@
+$ (cd ~) mkdir -p ~/corp-issues-dry && python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/file_issues.py ~/corp-cards/box-audit-sample-corp-2026-11-16.md --folder ~/corp-issues > ~/file-dry.txt; echo rc=$?; head -3 ~/file-dry.txt; grep -c "^=== " ~/file-dry.txt
+rc=0
+DRY RUN: 11 proposed issues for ~/corp-issues (a folder has no label list: labels not checked)
+
+=== [G] Record each ready.py pass against the head commit it judged
+11
+[exit 0]
+

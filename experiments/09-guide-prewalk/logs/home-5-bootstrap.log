@@ -1,0 +1,246 @@
+$ (cd ~) python3 -B ~/agent-box-kit/box/skills/box-bootstrap/scripts/bootstrap.py ~/sample-lib; echo rc=$?; cd ~/sample-lib && git branch && git log --oneline -5
+box-bootstrap: sample-lib, profile home (required_checks github, judge_protection github, worker_identity github, owner_labels github, tamper_guard_lint github, scheduled_judges github), stack python
+Branch: created box-bootstrap from main; main stays at c3cb63a4a6a3
+Round 1: missing gate, tamper_guard, local_gate, agents_proof, docs, verify, instance, pr_template, pr_body_lint; wrote .agents/skills/verify/SKILL.md, .box-profile, .github/pull_request_template.md, .github/workflows/gate.yml, .github/workflows/pr-checks.yml, AGENTS.md, docs/README.md, docs/architecture.md, docs/data-model.md, docs/disposable-instance.md, docs/runtime.md, docs/testing.md, scripts/check.py, scripts/pr_body_lint.py, scripts/tamper_guard.py; committed 17a102c1ced9
+Round 2: box-audit finds every item
+
+Items, as box-audit's collectors find them:
+  [x] G  CI gate: the one-command gate runs on every change, default-branch runs never cancelled
+  [x] G  Tamper guard on every change (pr-checks workflow)
+  [x] W  One command runs the whole gate locally (scripts/check.py)
+  [x] W  AGENTS.md says how to prove a change and names the gate
+  [x] W  Docs layer: index, architecture, data model, runtime, testing
+  [x] W  Verify skill (stub to fill in)
+  [x] W  Disposable-instance contract (stub to fill in)
+  [x] W  PR template with Proof, Not verified, Gate changes, Closes
+  [x] W  PR-body lint on every change (pr-checks workflow)
+
+Fill in before relying on them: AGENTS.md, docs/, .agents/skills/verify/SKILL.md and docs/disposable-instance.md hold `<...>` placeholders where bootstrap created them.
+
+Track record bootstrap cannot create:
+  - D: bug-hunt history. D's 9 needs a dated bug-hunt pass on the default branch and every escaped defect traced to its PR with a class-level check; a new box has no passes yet.
+  - P: deploy signals. Health and errors an agent can fetch, a silence alarm, vendored-copy freshness and installer smoke tests come from what the repo deploys or ships, not from templates (P is n/a for an undeployed library).
+
+Owner steps (bootstrap does none of these):
+  - Review the branch and merge it into main yourself; bootstrap never merges or pushes.
+  - Require the checks `gate`, `tamper-guard` and `pr-body` on main (a ruleset or branch protection), with the branch up to date, so the head commit is what is judged.
+  - Create the label `gate-change-approved` and apply it yourself, only after reading a flagged gate change; workers never apply it.
+  - For G's 10: run pr-checks from the base branch (pull_request_target or a required workflow) so a PR cannot rewrite its own judge.
+  - Workers act under their own identity (a GitHub App), never yours.
+
+BOOTSTRAP_DONE: every repo-level item bootstrap can create is present on box-bootstrap
+rc=0
+* box-bootstrap
+  box-setup
+  main
+17a102c box-bootstrap round 1: gate, tamper_guard, local_gate, agents_proof, docs, verify, instance, pr_template, pr_body_lint
+c3cb63a Initial commit
+[exit 0]
+
+$ (cd ~) echo "# re-walk after fix G1: bootstrap onto the step-3 branch"; cd ~/sample-lib && git switch -q box-setup && git branch -D box-bootstrap && cd ~ && python3 -B ~/agent-box-kit/box/skills/box-bootstrap/scripts/bootstrap.py ~/sample-lib --branch box-setup; echo rc=$?; cd ~/sample-lib && git log --oneline -5 && git diff HEAD~1 -- AGENTS.md | head -60
+# re-walk after fix G1: bootstrap onto the step-3 branch
+Deleted branch box-bootstrap (was 17a102c).
+box-bootstrap: sample-lib, profile home (required_checks github, judge_protection github, worker_identity github, owner_labels github, tamper_guard_lint github, scheduled_judges github), stack python
+Branch: on box-setup; main stays at c3cb63a4a6a3
+Round 1: missing gate, tamper_guard, local_gate, agents_proof, docs, verify, instance, pr_template, pr_body_lint; wrote .agents/skills/verify/SKILL.md, .github/pull_request_template.md, .github/workflows/gate.yml, .github/workflows/pr-checks.yml, AGENTS.md, docs/README.md, docs/architecture.md, docs/data-model.md, docs/disposable-instance.md, docs/runtime.md, docs/testing.md, scripts/check.py, scripts/pr_body_lint.py, scripts/tamper_guard.py; committed 192ba481b60d
+Round 2: box-audit finds every item
+
+Items, as box-audit's collectors find them:
+  [x] G  CI gate: the one-command gate runs on every change, default-branch runs never cancelled
+  [x] G  Tamper guard on every change (pr-checks workflow)
+  [x] W  One command runs the whole gate locally (scripts/check.py)
+  [x] W  AGENTS.md says how to prove a change and names the gate
+  [x] W  Docs layer: index, architecture, data model, runtime, testing
+  [x] W  Verify skill (stub to fill in)
+  [x] W  Disposable-instance contract (stub to fill in)
+  [x] W  PR template with Proof, Not verified, Gate changes, Closes
+  [x] W  PR-body lint on every change (pr-checks workflow)
+
+Fill in before relying on them: AGENTS.md, docs/, .agents/skills/verify/SKILL.md and docs/disposable-instance.md hold `<...>` placeholders where bootstrap created them.
+
+Track record bootstrap cannot create:
+  - D: bug-hunt history. D's 9 needs a dated bug-hunt pass on the default branch and every escaped defect traced to its PR with a class-level check; a new box has no passes yet.
+  - P: deploy signals. Health and errors an agent can fetch, a silence alarm, vendored-copy freshness and installer smoke tests come from what the repo deploys or ships, not from templates (P is n/a for an undeployed library).
+
+Owner steps (bootstrap does none of these):
+  - Review the branch and merge it into main yourself; bootstrap never merges or pushes.
+  - Require the checks `gate`, `tamper-guard` and `pr-body` on main (a ruleset or branch protection), with the branch up to date, so the head commit is what is judged.
+  - Create the label `gate-change-approved` and apply it yourself, only after reading a flagged gate change; workers never apply it.
+  - For G's 10: run pr-checks from the base branch (pull_request_target or a required workflow) so a PR cannot rewrite its own judge.
+  - Workers act under their own identity (a GitHub App), never yours.
+
+BOOTSTRAP_DONE: every repo-level item bootstrap can create is present on box-setup
+rc=0
+192ba48 box-bootstrap round 1: gate, tamper_guard, local_gate, agents_proof, docs, verify, instance, pr_template, pr_body_lint
+08e781a Add AGENTS.md and box profile
+c3cb63a Initial commit
+diff --git a/AGENTS.md b/AGENTS.md
+index 0468019..4dccd9e 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -32,3 +32,30 @@ Baseline recorded 2026-11-15: 2 passed, 0 failed.
+ ## Definition of done
+ Tests pass with visible output; diff is minimal and in scope; you have stated what you did not
+ run or verify.
++
++## Proving a change
++Run the whole gate locally, with one command, before you say a change is done:
++
++```
++python scripts/check.py
++```
++
++It runs every step CI runs and ends with `GATE_PASS`. CI runs the same command as the required check `gate` on every PR and on every push to
++`main`, so a red head commit cannot merge.
++
++Attach the proof to the change description, from the template at `.github/pull_request_template.md`: a
++`## Proof` table with one row per acceptance criterion (criterion, how you verified it,
++evidence), then `### Not verified` and `### Gate changes`, and the closing reference.
++The `pr-checks` workflow lints the description (`scripts/pr_body_lint.py`) and runs the tamper
++guard (`scripts/tamper_guard.py`) on every PR. Check a description yourself with
++`python scripts/pr_body_lint.py FILE`.
++
++- Verify, don't assert: evidence is output you saw, not a claim.
++- A bug fix starts with a test that fails on the base branch; paste its failing output.
++- Do not delete, skip or loosen a test, add a retry, or edit gate config (CI config, the
++  scripts in `scripts/`, coverage, pytest or lint settings) unless the issue asks for it. List
++  each such change under `### Gate changes`: the tamper guard flags it, and it needs the
++  owner's explicit approval.
++- To prove behaviour in the running product, follow the verify skill
++  (`.agents/skills/verify/SKILL.md`) on a disposable instance (`docs/disposable-instance.md`).
++
+[exit 0]
+
+$ (cd ~/sample-lib) python3 scripts/check.py; echo rc=$?; git status --short
+== tests: /usr/local/bin/python3 -m pytest -q -p no:cacheprovider
+..                                                                       [100%]
+2 passed in 0.01s
+GATE_PASS
+rc=0
+?? src/wordcount/__pycache__/
+?? tests/__pycache__/
+[exit 0]
+
+$ (cd ~/sample-lib) echo "# agent fills the bootstrap stubs from the code"
+SHA=$(git rev-parse --short=7 HEAD)
+cat > docs/README.md <<X
+Answers: what docs exist, what each covers, where to start.
+Read when: you are new to this repo and want to know which doc to open first.
+Basis: read from code at $SHA, 2026-11-15; nothing executed.
+
+# Docs index — wordcount
+
+See [../AGENTS.md](../AGENTS.md) for commands and rules, and the project README for the overview.
+
+| Doc | Answers | Read when |
+|---|---|---|
+| [architecture.md](architecture.md) | one module, two functions, no dependencies | before changing structure |
+| [data-model.md](data-model.md) | input text in, counts out; nothing stored | before changing return values |
+| [runtime.md](runtime.md) | a library: no process, config or deploy | never needed today |
+| [testing.md](testing.md) | pytest unit tests and their gaps | adding or diagnosing tests |
+
+## Unknowns and owner-to-confirm (collected)
+- None.
+X
+cat > docs/architecture.md <<X
+Answers: how the application is structured, which components exist, how they are wired, what it depends on.
+Read when: you need the overall shape before making a change.
+Basis: read from code at $SHA, 2026-11-15; nothing executed.
+
+# Architecture
+
+## What it is
+A pure-Python library (\`src/wordcount/__init__.py\`). It counts words and lists the most common ones.
+
+## Components
+| Component | Role | Where |
+|---|---|---|
+| \`count_words\` | number of whitespace-separated words | \`src/wordcount/__init__.py\` |
+| \`top_words\` | n most common lower-cased words, ties alphabetical | \`src/wordcount/__init__.py\` |
+
+## External dependencies
+None at run time. Tests use pytest.
+X
+cat > docs/data-model.md <<X
+Answers: what data is read and written, in which direction, how records are matched, what the key fields mean.
+Read when: you are changing queries, fields or the data flow, or debugging a wrong result.
+Basis: read from code at $SHA, 2026-11-15; nothing executed.
+
+# Data model
+
+## Flow direction
+\`\`\`
+caller text --> int or list of words   (read-only; nothing is stored)
+\`\`\`
+
+## Write path
+None. The library writes nothing.
+X
+cat > docs/runtime.md <<X
+Answers: how it starts, is configured, scheduled and deployed; how it fails; what it logs; whether a re-run is safe.
+Read when: you are deploying, debugging a failure, or assessing the effect of a re-run.
+Basis: read from code at $SHA, 2026-11-15; nothing executed.
+
+# Runtime
+
+A library imported by callers. No entry point, schedule, deployment, configuration or logging.
+Every call is a pure function, so a re-run is always safe.
+X
+cat > docs/testing.md <<X
+Answers: how the tests are structured, what each scenario covers, how to add one, what is missing.
+Read when: you are adding a test, diagnosing a failure, or assessing coverage before a change.
+Basis: read from code at $SHA, 2026-11-15; nothing executed.
+
+# Testing
+
+Commands live in [../AGENTS.md](../AGENTS.md). Baseline: 2 passed, 2026-11-15.
+
+## Scenarios covered
+| Test | Scenario |
+|---|---|
+| \`test_count_words\` | repeated spaces between words |
+| \`test_top_words\` | ordering by count |
+
+## Known gaps
+- Ties, empty text and punctuation are not tested.
+
+## How to add a test
+1. Add a \`test_*\` function to \`tests/test_wordcount.py\`, then run \`python3 scripts/check.py\`.
+X
+cat > docs/disposable-instance.md <<X
+Answers: how to start a throwaway instance with synthetic data, drive it and tear it down.
+Read when: you need to prove a change in the running product without touching real data.
+Basis: written from the code at $SHA, 2026-11-15.
+
+# Disposable instance
+
+A library has no running instance. Drive it in a throwaway interpreter:
+
+| Step | Command | Notes |
+|---|---|---|
+| Start | \`PYTHONPATH=src python3\` | synthetic text only |
+| Drive | \`>>> import wordcount; wordcount.top_words("b a b")\` | |
+| Tear down | exit the interpreter | leaves nothing behind |
+X
+cat > .agents/skills/verify/SKILL.md <<X
+---
+name: verify
+description: Prove a change to sample-lib works in the running product and record the evidence. Use before reporting a change done.
+---
+
+# verify
+
+1. Run the gate: \`python3 scripts/check.py\`. Keep its output.
+2. Drive the changed function in a throwaway interpreter, as docs/disposable-instance.md says,
+   on synthetic text. Record the call and its result.
+3. Put the evidence in the change description\x27s \`## Proof\` table, one row per acceptance
+   criterion. Say what you could not drive under \`### Not verified\`.
+X
+grep -rn "<[a-z][^>]*>" docs .agents || echo "no placeholders left"
+git add -A docs .agents && git commit -qm "Fill in docs and verify skill from the code" && git log --oneline -1
+# agent fills the bootstrap stubs from the code
+no placeholders left
+8b056ee Fill in docs and verify skill from the code
+[exit 0]
+
+$ (walker note) fixed a typo the walker made while writing the verify skill stub (commit "Fix apostrophe"); not a guide gap

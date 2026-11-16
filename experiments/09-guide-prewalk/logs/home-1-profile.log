@@ -1,0 +1,22 @@
+$ (cd ~/sample-lib) python3 -c "open('.box-profile', 'w').write('home\n')" && python3 -B ~/agent-box-kit/box/profiles/profile.py ~/sample-lib; echo rc=$?
+{
+  "name": "home",
+  "model_access": {
+    "provider": "any",
+    "second_family": "yes"
+  },
+  "source_control": "github",
+  "ci_host": "github",
+  "ide": "any",
+  "mechanisms": {
+    "required_checks": "github",
+    "judge_protection": "github",
+    "worker_identity": "github",
+    "owner_labels": "github",
+    "tamper_guard_lint": "github",
+    "scheduled_judges": "github"
+  }
+}
+rc=0
+[exit 0]
+

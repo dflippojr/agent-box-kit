@@ -1,0 +1,78 @@
+$ (cd ~/sample-corp) echo "# bug-hunt pass, following queue-fill Bug-hunt pass steps 1-4"; date -u +%F; git rev-parse --short=12 main; PYTHONPATH=src python3 -c "import wordcount as w; print(repr(w.top_words(\"a b c\", -1)), repr(w.count_words(\"\")), repr(w.top_words(\"B b a\", 1)))"; git log --format="%h %s" -L "/def top_words/,+5:src/wordcount/__init__.py" | grep -E "^[0-9a-f]{7} " 
+# bug-hunt pass, following queue-fill Bug-hunt pass steps 1-4
+2026-11-16
+29768e11b406
+['a', 'b'] 0 ['b']
+c3cb63a Initial commit
+[exit 0]
+
+$ (cd ~) mkdir -p ~/hunt-drafts ~/corp-issues && cat > ~/hunt-drafts/negative-n.md <<X
+---
+title: "Bug hunt: top_words returns words for a negative n"
+labels: bug, tier:mechanical, ready
+---
+## Problem
+Found by: bug hunt 2026-11-16 at 29768e11b406
+Introducing change: c3cb63a
+CI-catchable: yes
+
+top_words("a b c", -1) returns ["a", "b"]. Its docstring promises the n most common words, so a
+negative n should raise ValueError rather than drop the last word.
+
+## Want
+- A test that top_words with a negative n raises ValueError fails today and passes after the fix.
+
+## Constraints
+- Tests go in tests/test_wordcount.py. Attach the failing test output first.
+
+## Dependencies
+Dependencies: none
+
+## Out of scope
+Changing how words are split.
+X
+python3 -B ~/agent-box-kit/box/skills/queue-fill/scripts/hunt.py ~/hunt-drafts --folder ~/corp-issues; echo rc=$?
+FINDINGS_INVALID: fix the drafts first
+- negative-n.md: the title must start with `Bug hunt: `
+rc=1
+[exit 0]
+
+$ (cd ~) echo "# walker error: the title was quoted, unlike the skill example; unquoted"; sed -i "s/^title: \"\(.*\)\"$/title: \1/" ~/hunt-drafts/negative-n.md && head -3 ~/hunt-drafts/negative-n.md && python3 -B ~/agent-box-kit/box/skills/queue-fill/scripts/hunt.py ~/hunt-drafts --folder ~/corp-issues; echo rc=$?
+# walker error: the title was quoted, unlike the skill example; unquoted
+---
+title: Bug hunt: top_words returns words for a negative n
+labels: bug, tier:mechanical, ready
+DRY RUN: 1 proposed issues for ~/corp-issues (a folder has no label list: labels not checked)
+
+=== [D] Bug hunt: top_words returns words for a negative n
+Labels: bug, tier:mechanical, ready
+
+## Problem
+Found by: bug hunt 2026-11-16 at 29768e11b406
+Introducing change: c3cb63a
+CI-catchable: yes
+
+top_words("a b c", -1) returns ["a", "b"]. Its docstring promises the n most common words, so a
+negative n should raise ValueError rather than drop the last word.
+
+## Want
+- A test that top_words with a negative n raises ValueError fails today and passes after the fix.
+
+## Constraints
+- Tests go in tests/test_wordcount.py. Attach the failing test output first.
+
+## Dependencies
+Dependencies: none
+
+## Out of scope
+Changing how words are split.
+
+rc=0
+[exit 0]
+
+$ (cd ~) python3 -B ~/agent-box-kit/box/skills/queue-fill/scripts/hunt.py ~/hunt-drafts --folder ~/corp-issues --apply | tail -2; ls ~/corp-issues
+
+CREATED ~/corp-issues/1.md
+1.md
+[exit 0]
+

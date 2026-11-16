@@ -1,0 +1,23 @@
+$ (cd ~) python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/audit.py ~/sample-lib --out ~/cards-after --judge-line "isolated: fresh session started by the walker harness from prompt.md only; probe not run" --bundle-only ~/bundle-after; echo rc=$?
+~/bundle-after/prompt.md
+rc=0
+[exit 0]
+
+$ (cd ~) echo "# 6.5: re-audit after one loop"; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/audit.py ~/sample-lib --out ~/cards-loop1 --judge-line "isolated: harness session" --bundle-only ~/bundle-loop1; echo rc=$?; grep -n -A3 "^## defects" ~/bundle-loop1/evidence.md
+# 6.5: re-audit after one loop
+~/bundle-loop1/prompt.md
+rc=0
+96:## defects (unavailable: no remote)
+97-- [verified] last 6 non-merge commits on main: 1 look like fixes, 0 of those touched a test file, 0 reverts  (git log)
+98-- [verified] 87d2a907db 2026-11-16 Fix: top_words raises ValueError for a negative n (no test file changed)  (git log)
+99-
+[exit 0]
+
+$ (cd ~) echo "# the judge session s answer for the first re-audit saved as the card"; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/card.py check ~/cards-after/box-audit-sample-lib-2026-11-16.md; echo rc=$?; grep "^- Score\|^- Proven" ~/cards-after/box-audit-sample-lib-2026-11-16.md
+# the judge session s answer for the first re-audit saved as the card
+CARD_OK
+rc=0
+- Score: `G ~ · R ~ · J ✗ · W ~ · P – · D ✗ → 7`
+- Proven: 3.0
+[exit 0]
+

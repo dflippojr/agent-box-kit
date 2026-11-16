@@ -1,0 +1,5 @@
+$ (cd ~/sample-corp) git switch -q main && git merge --ff-only -q 29768e11b406ee6c8a2b6465c92247b42daa0c52 && git log --oneline -1 && git branch --show-current
+29768e1 Fill in docs and verify skill from the code
+main
+[exit 0]
+

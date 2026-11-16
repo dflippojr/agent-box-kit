@@ -1,0 +1,7 @@
+$ (cd ~) echo "# NOT WALKED: 4a needs an agent CLI (the judge) and one of your personal instruction files; this box has neither"; for c in claude codex gemini; do command -v $c || echo "$c: none"; done
+# NOT WALKED: 4a needs an agent CLI (the judge) and one of your personal instruction files; this box has neither
+claude: none
+codex: none
+gemini: none
+[exit 0]
+

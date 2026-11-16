@@ -1,0 +1,30 @@
+$ (cd ~) set -e; echo "# final walk at the fixed guide: fresh kit copy, third fresh copy of the sample repo"; rm -rf agent-box-kit && tar xf /tmp/kit.tar && rm /tmp/kit.tar; git clone -q sample-lib sample-final && cd sample-final && git reset -q --hard c3cb63a && git remote remove origin
+echo "## step 1"; python3 -c "open(\".box-profile\", \"w\").write(\"corporate\n\")"; python3 -B ~/agent-box-kit/box/profiles/profile.py ~/sample-final | sed -n 2p
+echo "## step 3"; git -C ~/sample-lib show 08e781a:AGENTS.md > AGENTS.md; git switch -q -c box-setup; git add AGENTS.md .box-profile; git commit -qm "Add AGENTS.md and box profile"; git status --short
+echo "## step 4b (bundle form)"; cd ~; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/audit.py ~/sample-final --no-remote --out ~/final-cards --judge-line "isolated: harness session" --bundle-only ~/final-bundle
+python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/card.py --help | head -2
+python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/card.py check ~/corp-cards/box-audit-sample-corp-2026-11-16.md
+echo "## step 5"; python3 -B ~/agent-box-kit/box/skills/box-bootstrap/scripts/bootstrap.py ~/sample-final --branch box-setup | tail -1
+cd ~/sample-final; python3 scripts/check.py | tail -1
+for f in docs/README.md docs/architecture.md docs/data-model.md docs/runtime.md docs/testing.md docs/disposable-instance.md .agents/skills/verify/SKILL.md; do git -C ~/sample-lib show main:$f > $f; done; git add -A docs .agents; git commit -qm "Fill in docs and verify skill from the code"
+python3 scripts/ready.py --body ~/notes/box-setup.md | tail -1 || true
+H=$(git rev-parse HEAD); git tag gate-change-approved/$H $H
+python3 scripts/ready.py --body ~/notes/box-setup.md | tail -1
+git switch -q main; git merge --ff-only -q $H; git log --oneline -1
+# final walk at the fixed guide: fresh kit copy, third fresh copy of the sample repo
+## step 1
+  "name": "corporate",
+## step 3
+## step 4b (bundle form)
+~/final-bundle/prompt.md
+Usage:
+  card.py check CARD      Print CARD_OK, or CARD_INVALID and one problem per line.
+CARD_OK
+## step 5
+BOOTSTRAP_DONE: every repo-level item bootstrap can create is present on box-setup
+GATE_PASS
+NOT_READY at 0bbb0abebad12611dd06dbbea104ecde9a64e9f7: tamper guard
+READY: merge 0bbb0abebad12611dd06dbbea104ecde9a64e9f7 and nothing else
+0bbb0ab Fill in docs and verify skill from the code
+[exit 0]
+

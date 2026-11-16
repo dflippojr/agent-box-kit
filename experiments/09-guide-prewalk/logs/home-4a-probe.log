@@ -1,0 +1,5 @@
+$ (cd ~) command -v gh || echo "no gh"; ls ~/.config 2>/dev/null || echo "no personal instruction files and no agent CLI in this fresh box"
+no gh
+no personal instruction files and no agent CLI in this fresh box
+[exit 0]
+

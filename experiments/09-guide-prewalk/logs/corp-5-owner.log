@@ -1,0 +1,30 @@
+$ (cd ~/sample-corp) echo "# owner step, done by the walker acting as the owner of this throwaway repo: read the flagged gate change, then tag its head commit"; git diff --stat main..HEAD -- scripts .box-profile docs/pull_request_template.md; H=$(git rev-parse HEAD); git tag gate-change-approved/$H $H && python3 scripts/ready.py --body ~/notes/box-setup.md; echo rc=$?
+# owner step, done by the walker acting as the owner of this throwaway repo: read the flagged gate change, then tag its head commit
+ .box-profile                  |   1 +
+ docs/pull_request_template.md |  24 ++++++
+ scripts/check.py              |  41 +++++++++++
+ scripts/pr_body_lint.py       | 103 ++++++++++++++++++++++++++
+ scripts/ready.py              |  92 +++++++++++++++++++++++
+ scripts/tamper_guard.py       | 166 ++++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 427 insertions(+)
+Judging head commit 29768e11b406ee6c8a2b6465c92247b42daa0c52 against main
+== gate
+== tests: /usr/local/bin/python3 -m pytest -q -p no:cacheprovider
+..                                                                       [100%]
+2 passed in 0.01s
+GATE_PASS
+owner approval tag gate-change-approved/29768e11b406ee6c8a2b6465c92247b42daa0c52 found
+== tamper guard
+GATE CHANGE: edits gate config .box-profile
+GATE CHANGE: edits gate config docs/pull_request_template.md
+GATE CHANGE: edits gate config scripts/check.py
+GATE CHANGE: edits gate config scripts/pr_body_lint.py
+GATE CHANGE: edits gate config scripts/ready.py
+GATE CHANGE: edits gate config scripts/tamper_guard.py
+TAMPER_GUARD_PASS: 6 gate change(s), approved by the owner
+== PR-body lint
+PR_BODY_PASS
+READY: merge 29768e11b406ee6c8a2b6465c92247b42daa0c52 and nothing else
+rc=0
+[exit 0]
+

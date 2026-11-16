@@ -1,0 +1,50 @@
+$ (cd ~/sample-corp) git switch -q -c fix-negative-n && cat >> tests/test_wordcount.py <<X
+
+
+def test_top_words_rejects_negative_n():
+    import pytest
+    with pytest.raises(ValueError):
+        top_words("a b c", -1)
+X
+git commit -qam "Test: top_words rejects a negative n (red)" && python3 scripts/check.py | tail -3
+python3 - <<X
+p = "src/wordcount/__init__.py"
+s = open(p).read().replace("    counts = {}\n", "    if n < 0:\n        raise ValueError(\"n must not be negative\")\n    counts = {}\n", 1)
+open(p, "w").write(s)
+X
+git commit -qam "Fix: top_words raises ValueError for a negative n (closes #1)" && python3 scripts/check.py | tail -2
+FAILED tests/test_wordcount.py::test_top_words_rejects_negative_n - Failed: D...
+1 failed, 2 passed in 0.02s
+GATE_FAIL: tests
+3 passed in 0.01s
+GATE_PASS
+[exit 0]
+
+$ (cd ~/sample-corp) cat > ~/notes/fix-1.md <<X
+## What and why
+
+top_words now raises ValueError for a negative n instead of dropping words.
+
+Closes #1
+
+## Proof
+
+| Acceptance criterion | How verified | Evidence |
+|---|---|---|
+| A negative-n test fails before and passes after | python3 scripts/check.py on each commit | before: 1 failed, GATE_FAIL; after: 3 passed, GATE_PASS |
+
+### Not verified
+
+Nothing else: the library has no running instance.
+
+### Gate changes
+
+none
+X
+python3 scripts/ready.py --body ~/notes/fix-1.md | tail -3; git switch -q main && git merge --ff-only -q fix-negative-n && git log --oneline -1
+== PR-body lint
+PR_BODY_PASS
+READY: merge acff74c47e828e4eed4ada1f9a1e8bd3a5be8cd6 and nothing else
+acff74c Fix: top_words raises ValueError for a negative n (closes #1)
+[exit 0]
+

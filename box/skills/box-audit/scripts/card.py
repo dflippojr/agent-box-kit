@@ -7,8 +7,9 @@ Usage:
   card.py score "ROW"     Print the overall score for a row such as
                           "G ✓ · R ~ · J ✗ · W ~ · P – · D ~".
   card.py proven "ROW"    Print the row's Proven value, such as 5.0.
+  card.py --help          Print this usage.
 
-Exit codes: 0 card valid, or row scored or Proven printed; 1 card invalid; 2 usage error (unreadable card,
+Exit codes: 0 card valid, row scored, Proven or usage printed; 1 card invalid; 2 usage error (unreadable card,
 malformed row).
 
 The overall rule is the one in box/STANDARD.md:
@@ -282,6 +283,9 @@ def check(text):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     sys.stdout.reconfigure(encoding="utf-8")
+    if argv in (["--help"], ["-h"]):
+        print(__doc__.split("\n\n")[1])
+        return 0
     if len(argv) != 2 or argv[0] not in ("check", "score", "proven"):
         print(__doc__.split("\n\n")[1], file=sys.stderr)
         return 2

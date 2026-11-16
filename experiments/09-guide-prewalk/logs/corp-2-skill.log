@@ -1,0 +1,5 @@
+$ (cd ~) echo "# skill already copied in the home walk; checked again"; ls ~/agent-skills/agent-ready/SKILL.md
+# skill already copied in the home walk; checked again
+~/agent-skills/agent-ready/SKILL.md
+[exit 0]
+

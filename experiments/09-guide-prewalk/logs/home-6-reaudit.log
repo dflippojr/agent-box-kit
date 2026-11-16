@@ -1,0 +1,28 @@
+$ (cd ~) python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/audit.py ~/sample-lib --out ~/cards-after --judge-line "isolated: fresh session started by the harness from prompt.md only; probe not run" --bundle-only ~/bundle-after; echo rc=$?; ls ~/cards-after 2>&1; ls ~/bundle-after
+~/bundle-after/prompt.md
+rc=0
+ls: cannot access '~/cards-after': No such file or directory
+evidence.md
+prompt.md
+[exit 0]
+
+$ (cd ~) echo "# judge answer saved as the card"; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/card.py check ~/cards-after/box-audit-sample-lib-2026-11-16.md; echo rc=$?; grep -n "^- Score\|^- Proven\|^#### " ~/cards-after/box-audit-sample-lib-2026-11-16.md
+# judge answer saved as the card
+CARD_OK
+rc=0
+7:- Score: `G ~ · R ~ · J ✗ · W ~ · P – · D ✗ → 7`
+8:- Proven: 3.0
+39:#### Add a ready script that runs the gate on the head commit before any merge
+62:#### Add tests proving the tamper guard flags test deletions, skips, retries and gate edits
+84:#### Add an automated review step whose findings block ready
+127:#### Run the gate on Linux, macOS and Windows for each supported Python version
+169:#### Add a differential test of word counts against an independent reference on a fixed corpus
+191:#### Add an owner-labelled golden corpus of word counts
+240:#### Add a test that scripts/check.py covers every step in gate.yml
+262:#### Point AGENTS.md's verify section at the one gate command
+283:#### Add tests that the PR-body lint rejects descriptions missing each required part
+348:#### Add a class-level word-boundary test for the apostrophe fix and trace its origin
+369:#### Reject fix PRs that change no test file
+390:#### Run and record a dated bug-hunt pass on main
+[exit 0]
+

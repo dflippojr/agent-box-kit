@@ -1,0 +1,7 @@
+$ (cd ~/sample-corp) python3 -c "open('.box-profile', 'w').write('corporate\n')" && python3 -B ~/agent-box-kit/box/profiles/profile.py ~/sample-corp | head -3; echo rc=${PIPESTATUS[0]}
+{
+  "name": "corporate",
+  "model_access": {
+rc=0
+[exit 0]
+

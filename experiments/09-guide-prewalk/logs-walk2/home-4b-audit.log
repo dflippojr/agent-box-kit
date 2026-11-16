@@ -1,0 +1,16 @@
+$ (cd ~) echo "# guide: home reads the remote from origin; this repo has none (no GitHub account), so host evidence is unavailable. Bundle form, since there is no judge CLI"; git -C ~/sample-lib remote -v; mkdir -p ~/cards; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/audit.py ~/sample-lib --out ~/cards --judge-line "isolated: fresh session started by the walker harness from prompt.md only; probe not run" --bundle-only ~/bundle-before; echo rc=$?; grep -n "Host evidence\|^- Remote" ~/bundle-before/evidence.md
+# guide: home reads the remote from origin; this repo has none (no GitHub account), so host evidence is unavailable. Bundle form, since there is no judge CLI
+~/bundle-before/prompt.md
+rc=0
+3:- Remote: none
+4:- Host evidence: unavailable (no remote)
+[exit 0]
+
+$ (cd ~) echo "# the judge session s answer saved as the card"; python3 -B ~/agent-box-kit/box/skills/box-audit/scripts/card.py check ~/cards/box-audit-sample-lib-2026-11-16.md; echo rc=$?; grep "^- Score\|^- Proven" ~/cards/box-audit-sample-lib-2026-11-16.md
+# the judge session s answer saved as the card
+CARD_OK
+rc=0
+- Score: `G ✗ · R ✗ · J ✗ · W ~ · P – · D ✗ → 5`
+- Proven: 1.0
+[exit 0]
+

@@ -1,0 +1,33 @@
+$ (cd ~) python3 -B ~/agent-box-kit/box/skills/box-bootstrap/scripts/bootstrap.py ~/sample-lib --branch box-setup | grep -E "^Branch|^Round|^BOOTSTRAP|^  -"; echo rc=${PIPESTATUS[0]}; cd ~/sample-lib && python3 scripts/check.py; echo rc=$?
+Branch: on box-setup; main stays at fb3409c49df1
+Round 1: missing gate, tamper_guard, local_gate, agents_proof, docs, verify, instance, pr_template, pr_body_lint; wrote .agents/skills/verify/SKILL.md, .github/pull_request_template.md, .github/workflows/gate.yml, .github/workflows/pr-checks.yml, AGENTS.md, docs/README.md, docs/architecture.md, docs/data-model.md, docs/disposable-instance.md, docs/runtime.md, docs/testing.md, scripts/check.py, scripts/pr_body_lint.py, scripts/tamper_guard.py; committed fb068b8b3dde
+Round 2: box-audit finds every item
+  - D: bug-hunt history. D's 9 needs a dated bug-hunt pass on the default branch and every escaped defect traced to its PR with a class-level check; a new box has no passes yet.
+  - P: deploy signals. Health and errors an agent can fetch, a silence alarm, vendored-copy freshness and installer smoke tests come from what the repo deploys or ships, not from templates (P is n/a for an undeployed library).
+  - Review the branch and merge it into main yourself; bootstrap never merges or pushes.
+  - Require the checks `gate`, `tamper-guard` and `pr-body` on main (a ruleset or branch protection), with the branch up to date, so the head commit is what is judged.
+  - Create the label `gate-change-approved` and apply it yourself, only after reading a flagged gate change; workers never apply it.
+  - For G's 10: run pr-checks from the base branch (pull_request_target or a required workflow) so a PR cannot rewrite its own judge.
+  - Workers act under their own identity (a GitHub App), never yours.
+BOOTSTRAP_DONE: every repo-level item bootstrap can create is present on box-setup
+rc=0
+== tests: /usr/local/bin/python3 -m pytest -q -p no:cacheprovider
+..                                                                       [100%]
+2 passed in 0.01s
+GATE_PASS
+rc=0
+[exit 0]
+
+$ (cd ~/sample-lib) echo "# the walking agent replaces each placeholder with what the code says (script: the walker s answer, run here)"; python3 /tmp/fill_stubs.py ~/sample-lib; grep -rn "<[a-z][^>]*>" docs .agents || echo "no placeholders left"; git add -A docs .agents && git commit -qm "Fill in docs and verify skill from the code" && git log --oneline -1
+# the walking agent replaces each placeholder with what the code says (script: the walker s answer, run here)
+wrote docs/README.md
+wrote docs/architecture.md
+wrote docs/data-model.md
+wrote docs/runtime.md
+wrote docs/testing.md
+wrote docs/disposable-instance.md
+wrote .agents/skills/verify/SKILL.md
+no placeholders left
+0566dff Fill in docs and verify skill from the code
+[exit 0]
+

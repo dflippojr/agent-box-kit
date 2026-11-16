@@ -1,0 +1,13 @@
+$ (cd ~/sample-lib) git --version; python3 --version; python3 -m pytest -q 2>&1 | tail -1; echo "# guide: if pytest is missing"; python3 -m pip install --user -q pytest 2>&1 | grep -v notice; python3 -m pytest -q | tail -1
+git version 2.47.3
+Python 3.12.16
+/usr/local/bin/python3: No module named pytest
+# guide: if pytest is missing
+  WARNING: The script pygmentize is installed in '~/.local/bin' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+  WARNING: The scripts py.test and pytest are installed in '~/.local/bin' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+
+2 passed in 0.01s
+[exit 0]
+

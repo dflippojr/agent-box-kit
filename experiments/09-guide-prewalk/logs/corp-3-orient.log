@@ -1,0 +1,11 @@
+$ (cd ~/sample-corp) echo "# agent follows module 01: same repo content, so the AGENTS.md from the home walk at its first commit is reused"; git -C ~/sample-lib show 08e781a:AGENTS.md > AGENTS.md && python3 -m pytest -q && git switch -c box-setup && git add AGENTS.md .box-profile && git commit -qm "Add AGENTS.md and box profile" && git status --short; git log --oneline
+# agent follows module 01: same repo content, so the AGENTS.md from the home walk at its first commit is reused
+..                                                                       [100%]
+2 passed in 0.01s
+Switched to a new branch 'box-setup'
+?? src/wordcount/__pycache__/
+?? tests/__pycache__/
+26d5559 Add AGENTS.md and box profile
+c3cb63a Initial commit
+[exit 0]
+

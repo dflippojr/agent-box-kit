@@ -1282,6 +1282,14 @@ def test_proven_command():
     assert script("card.py", "proven", "G ✓ · R ~").returncode == 2
 
 
+@pytest.mark.parametrize("flag", ["--help", "-h"])
+def test_card_help_exits_zero_with_usage(flag):
+    # GUIDE.md runs card.py, and a script the guide runs must answer --help with exit 0.
+    r = script("card.py", flag)
+    assert r.returncode == 0 and "card.py check CARD" in r.stdout
+    assert script("card.py").returncode == 2  # no arguments is still a usage error
+
+
 # ----- judge isolation -----------------------------------------------------------------------
 
 FAKE_CLI = r'''

@@ -1,0 +1,55 @@
+$ (cd ~) git config --global user.name "Sample Dev" && git config --global user.email dev@example.com && python3 -m pip install --user -q pytest 2>&1 | tail -2; python3 -m pytest --version
+[notice] A new release of pip is available: 25.0.1 -> 26.3
+[notice] To update, run: pip install --upgrade pip
+pytest 9.2.0
+[exit 0]
+
+$ (cd ~) mkdir -p sample-lib/src/wordcount sample-lib/tests && cd sample-lib && git init -q -b main && cat > pyproject.toml <<X
+[project]
+name = "wordcount"
+version = "0.1.0"
+requires-python = ">=3.8"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+X
+cat > src/wordcount/__init__.py <<X
+"""Count words in text."""
+
+
+def count_words(text):
+    """Return the number of whitespace-separated words in text."""
+    return len(text.split())
+
+
+def top_words(text, n=3):
+    """Return the n most common lower-cased words, most common first, ties alphabetical."""
+    counts = {}
+    for word in text.lower().split():
+        counts[word] = counts.get(word, 0) + 1
+    return sorted(counts, key=lambda w: (-counts[w], w))[:n]
+X
+cat > tests/test_wordcount.py <<X
+from wordcount import count_words, top_words
+
+
+def test_count_words():
+    assert count_words("a b  c") == 3
+
+
+def test_top_words():
+    assert top_words("b a b c a b", 2) == ["b", "a"]
+X
+printf "# wordcount\n\nCount words in text. Run the tests with python3 -m pytest -q.\n" > README.md
+git add -A && git commit -qm "Initial commit" && git log --oneline && python3 -m pytest -q
+c3cb63a Initial commit
+..                                                                       [100%]
+2 passed in 0.01s
+[exit 0]
+
+$ (cd ~) echo "# corporate walk: fresh kit copy at the fixed guide, and a fresh copy of the sample repo at its first commit"; rm -rf agent-box-kit && tar xf /tmp/kit.tar && rm /tmp/kit.tar && git clone -q sample-lib sample-corp && cd sample-corp && git reset -q --hard c3cb63a && git remote remove origin && git log --oneline --all | head; git branch
+# corporate walk: fresh kit copy at the fixed guide, and a fresh copy of the sample repo at its first commit
+c3cb63a Initial commit
+* main
+[exit 0]
+

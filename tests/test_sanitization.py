@@ -2,7 +2,7 @@
 private addresses. Pure stdlib.
 
 The docs are every tracked text file under agent-ready/ and box/ (all extensions, scripts
-included), plus README.md and AGENTS.md. "Infrastructure detail" means exactly the five patterns
+included), plus README.md, AGENTS.md and GUIDE.md. "Infrastructure detail" means exactly the five patterns
 in PATTERNS. A file with a NUL byte and no UTF-16 BOM is binary and skipped. Any other file that
 is not UTF-8 fails, because it cannot be scanned. In a .py file, attribute access in code such
 as `args.local` is not a .local hostname; its strings and comments are still scanned, and a .py
@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-DOC_PATHS = ["agent-ready", "box", "README.md", "AGENTS.md"]
+DOC_PATHS = ["agent-ready", "box", "README.md", "AGENTS.md", "GUIDE.md"]
 
 OCTET = r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
 LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
