@@ -22,8 +22,8 @@ You need:
 - **An agent** that can load skills and run commands in a repo, and its command-line form in
   non-interactive mode (reads a prompt on stdin, prints the answer). Step 4 uses it as the judge.
 - **A Python repo** to work on, checked out locally with at least one commit, whose tests run with
-  `python3 -m pytest` (install pytest if they don't). box-bootstrap supports Python only, and the
-  gate it writes runs pytest.
+  `python3 -m pytest` (if pytest is missing: `python3 -m pip install --user pytest`).
+  box-bootstrap supports Python only, and the gate it writes runs pytest.
 - **home**: the repo is on GitHub, as its `origin` remote, and the GitHub CLI `gh` is installed
   and signed in. The audit reads host evidence and files issues through it.
 - **A copy of this kit.** Clone it, or download and unpack its archive, into a folder of its own
@@ -159,7 +159,9 @@ Then ask the agent to replace every `<...>` placeholder bootstrap left (in `docs
 **Merge the branch** through the gate bootstrap just built. Write a change description from the
 pull request template bootstrap added (**home**: `.github/pull_request_template.md`;
 **corporate**: `docs/pull_request_template.md`), with a `## Proof` table, `### Not verified` and
-`### Gate changes`.
+`### Gate changes`. **corporate**: save it outside `<repo>`, for example as
+`~/notes/box-setup.md`. `ready.py` judges the committed head and refuses a working tree with new
+files in it.
 
 - **home**: push the branch and open a pull request with that description. Do bootstrap's owner
   steps (required checks, the `gate-change-approved` label). The `tamper-guard` check fails on
@@ -168,8 +170,12 @@ pull request template bootstrap added (**home**: `.github/pull_request_template.
 - **corporate**: run the `ready` script on the branch:
 
   ```
-  python3 scripts/ready.py --body <description file>
+  python3 scripts/ready.py --body ~/notes/box-setup.md
   ```
+
+  If it ends `NOT_READY: the working tree has changes that are not in the head commit` and lists
+  your description file, you saved it inside `<repo>`: move it out (`mv box-setup.md
+  ~/notes/`) and run `ready.py` again with the new path.
 
   The first run ends `NOT_READY ... tamper guard`, because the branch adds gate files. Read the
   change, then approve it the way bootstrap's owner steps say, by tagging the head commit
