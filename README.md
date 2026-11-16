@@ -17,6 +17,8 @@ change, so the guide is organized around making output **reviewable, verified an
 
 ## Use it
 
+- **From zero:** [`GUIDE.md`](GUIDE.md) walks you, in order, from nothing to a repo whose box
+  scores 9/10: pick a profile, install the skill, orient the repo, audit, bootstrap, re-audit.
 - **As a skill:** copy the `agent-ready/` folder into your agent's skills directory (or reference
   `agent-ready/SKILL.md` from a repo's `AGENTS.md`). `SKILL.md` holds the always-on rules and a
   table that loads one module at a time.
@@ -69,6 +71,7 @@ experiments/06-skill-eval/     skill-eval's proof run on agent-ready (harmful an
 experiments/07-rule-mining/    reading pass over four public skill bundles: coverage, contradictions,
                                up to 10 proposed rules; proposals only, not part of the skill
 ci/                            pinned test and coverage requirements used by CI and Dependabot
+GUIDE.md                       zero to a 9/10 box, step by step
 EVIDENCE.md                    where each rule came from and how well it is evidenced
 LICENSE                        MIT
 AGENTS.md                      how to maintain this repo
