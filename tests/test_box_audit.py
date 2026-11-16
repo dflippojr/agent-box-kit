@@ -322,6 +322,158 @@ def test_defects_from_git_history(box_repo):
     assert "asks which change introduced" in text
 
 
+def test_a_fix_whose_red_test_landed_in_the_commit_before_it_has_a_test(repo):
+    """Red first: the failing test, then the fix, fast-forward merged as two commits."""
+    write(repo, "app.py", "def total():\n    return 1\n")
+    commit(repo, "Add the app")
+    write(repo, "tests/test_total.py", "def test_total():\n    assert 2 == 2\n")
+    commit(repo, "Add a failing test for the total")
+    write(repo, "app.py", "def total():\n    return 2\n")
+    commit(repo, "fix: total rounds half up")
+    git(repo, "branch", "-M", "main")
+    c = by_name(collect.collect(repo, no_remote=True))["defects"]
+    assert c["data"]["fixes"] == 1 and c["data"]["fixes_with_tests"] == 1
+    assert "no test file changed" not in claims(c)
+
+
+def test_a_test_from_an_earlier_merge_does_not_cover_a_later_fix(repo):
+    """A test that reached main on its own is not the red test of a fix merged later."""
+    write(repo, "app.py", "def total():\n    return 1\n")
+    commit(repo, "Add the app")
+    git(repo, "branch", "-M", "main")
+    write(repo, "tests/test_total.py", "def test_total():\n    assert 1 == 1\n")
+    commit(repo, "Add a test for the total")
+    git(repo, "checkout", "-q", "-b", "fix-branch")
+    write(repo, "app.py", "def total():\n    return 2\n")
+    commit(repo, "fix: total rounds half up")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", "-m", "Merge fix-branch", "fix-branch")
+    c = by_name(collect.collect(repo, no_remote=True))["defects"]
+    assert c["data"]["fixes"] == 1 and c["data"]["fixes_with_tests"] == 0
+    assert "fix: total rounds half up (no test file changed)" in claims(c)
+
+
+def test_a_red_test_and_its_fix_in_one_merge_commit_have_a_test(repo):
+    """Red first on a branch, both commits brought in by one --no-ff merge."""
+    write(repo, "app.py", "def total():\n    return 1\n")
+    commit(repo, "Add the app")
+    git(repo, "branch", "-M", "main")
+    git(repo, "checkout", "-q", "-b", "fix-branch")
+    write(repo, "tests/test_total.py", "def test_total():\n    assert 2 == 2\n")
+    commit(repo, "Add a failing test for the total")
+    write(repo, "app.py", "def total():\n    return 2\n")
+    commit(repo, "fix: total rounds half up")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", "-m", "Merge fix-branch", "fix-branch")
+    c = by_name(collect.collect(repo, no_remote=True))["defects"]
+    assert c["data"]["fixes"] == 1 and c["data"]["fixes_with_tests"] == 1
+    assert "no test file changed" not in claims(c)
+
+
+def test_a_test_from_an_earlier_merge_commit_does_not_cover_a_fix_built_on_it(repo):
+    """The test reached main in one --no-ff merge; the fix, made on top of it on the same branch,
+    in a later one. Neither commit is on main's first-parent line, but they are two merges."""
+    write(repo, "app.py", "def total():\n    return 1\n")
+    commit(repo, "Add the app")
+    git(repo, "branch", "-M", "main")
+    git(repo, "checkout", "-q", "-b", "work")
+    write(repo, "tests/test_total.py", "def test_total():\n    assert 1 == 1\n")
+    commit(repo, "Add a test for the total")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", "-m", "Merge the test", "work")
+    git(repo, "checkout", "-q", "work")
+    write(repo, "app.py", "def total():\n    return 2\n")
+    commit(repo, "fix: total rounds half up")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", "-m", "Merge the fix", "work")
+    c = by_name(collect.collect(repo, no_remote=True))["defects"]
+    assert c["data"]["fixes"] == 1 and c["data"]["fixes_with_tests"] == 0
+    assert "fix: total rounds half up (no test file changed)" in claims(c)
+
+
+HUNT_FINDING = """\
+---
+number: 1
+title: Bug hunt: totals round half down
+state: open
+labels: bug, ready, tier:standard
+createdAt: 2026-11-02T10:00:00Z
+---
+## Problem
+Found by: bug hunt 2026-11-02 at 0123abc
+Introducing change: 4567def
+CI-catchable: yes
+
+Totals round half down.
+"""
+
+UNTRACED_FINDING = HUNT_FINDING.replace("number: 1", "number: 2").replace(
+    "totals round half down", "dates shift by a day").replace(
+    "Introducing change: 4567def", "Introducing change: unknown").replace(
+    "state: open", "state: closed")
+
+PLAIN_ISSUE = ("---\nnumber: 3\ntitle: Add an export\nstate: open\nlabels: ready\n"
+               "createdAt: 2026-11-03T10:00:00Z\n---\nBody.\n")
+
+
+@pytest.fixture
+def issues_folder(tmp_path):
+    folder = tmp_path / "issues"
+    write(folder, "1.md", HUNT_FINDING)
+    write(folder, "2.md", UNTRACED_FINDING)
+    write(folder, "3.md", PLAIN_ISSUE)
+    return folder
+
+
+def test_defects_from_an_issue_folder_count_bug_hunt_passes(box_repo, issues_folder):
+    """A repo with no hosted VCS evidences D from its issue folder, as the host would."""
+    c = by_name(collect.collect(box_repo, no_remote=True, issues_folder=issues_folder))["defects"]
+    assert c["status"] == "ok"
+    assert c["data"]["defect_issues"] == 2 and c["data"]["traced"] == 1
+    assert c["data"]["bug_hunt_days"] == {"2026-11-02": 2}
+    folder_items = [i for i in c["items"] if i["source"] == "issue folder"]
+    assert folder_items and all(i["basis"] == "verified" for i in folder_items)
+    text = claims(c)
+    assert "2 defect-labelled issues; 1 name the change that introduced them; open 1" in text
+    assert "bug-hunt issues by day: 2026-11-02 2" in text
+    assert "#1 2026-11-02 open: Bug hunt: totals round half down" in text
+    assert "1 reverts" in text  # the local history is still reported
+
+
+def test_collect_and_audit_take_an_issue_folder(box_repo, issues_folder, tmp_path):
+    r = script("collect.py", box_repo, "--no-remote", "--issues-folder", issues_folder,
+               "--format", "md")
+    assert r.returncode == 0, r.stderr
+    assert "## defects\n" in r.stdout
+    assert "2 defect-labelled issues; 1 name the change" in r.stdout
+    out = tmp_path / "bundle"
+    r = script("audit.py", box_repo, "--no-remote", "--issues-folder", issues_folder,
+               "--bundle-only", out)
+    assert r.returncode == 0, r.stderr
+    assert "bug-hunt issues by day: 2026-11-02 2" in (out / "evidence.md").read_text(
+        encoding="utf-8")
+    missing = tmp_path / "no-such-folder"
+    assert script("collect.py", box_repo, "--no-remote", "--issues-folder",
+                  missing).returncode == 2
+    assert script("audit.py", box_repo, "--no-remote", "--issues-folder", missing,
+                  "--bundle-only", out).returncode == 2
+
+
+def test_an_unreadable_issue_folder_is_unavailable_not_zero(box_repo, issues_folder):
+    write(issues_folder, "4.md", "no header here\n")
+    c = by_name(collect.collect(box_repo, no_remote=True, issues_folder=issues_folder))["defects"]
+    assert c["status"] == "unavailable" and "4.md" in c["reason"]
+    assert "defect_issues" not in c["data"]
+    assert "1 reverts" in claims(c)
+
+
+def test_an_issue_folder_takes_the_place_of_the_host_for_defect_issues(box_repo, issues_folder):
+    c = by_name(collect.collect(box_repo, slug="owner/app", runner=fixture_host(),
+                                issues_folder=issues_folder))["defects"]
+    assert c["data"]["defect_issues"] == 2 and c["data"]["traced"] == 1
+    assert not [i for i in c["items"] if i["source"] == "api issues"]
+
+
 def test_agents_md_without_proof_section_is_reported(repo):
     write(repo, "AGENTS.md", "# Agents\n\n## Layout\n\nsrc/\n")
     commit(repo, "agents")
