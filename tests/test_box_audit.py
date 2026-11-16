@@ -353,6 +353,44 @@ def test_a_test_from_an_earlier_merge_does_not_cover_a_later_fix(repo):
     assert "fix: total rounds half up (no test file changed)" in claims(c)
 
 
+def test_a_red_test_and_its_fix_in_one_merge_commit_have_a_test(repo):
+    """Red first on a branch, both commits brought in by one --no-ff merge."""
+    write(repo, "app.py", "def total():\n    return 1\n")
+    commit(repo, "Add the app")
+    git(repo, "branch", "-M", "main")
+    git(repo, "checkout", "-q", "-b", "fix-branch")
+    write(repo, "tests/test_total.py", "def test_total():\n    assert 2 == 2\n")
+    commit(repo, "Add a failing test for the total")
+    write(repo, "app.py", "def total():\n    return 2\n")
+    commit(repo, "fix: total rounds half up")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", "-m", "Merge fix-branch", "fix-branch")
+    c = by_name(collect.collect(repo, no_remote=True))["defects"]
+    assert c["data"]["fixes"] == 1 and c["data"]["fixes_with_tests"] == 1
+    assert "no test file changed" not in claims(c)
+
+
+def test_a_test_from_an_earlier_merge_commit_does_not_cover_a_fix_built_on_it(repo):
+    """The test reached main in one --no-ff merge; the fix, made on top of it on the same branch,
+    in a later one. Neither commit is on main's first-parent line, but they are two merges."""
+    write(repo, "app.py", "def total():\n    return 1\n")
+    commit(repo, "Add the app")
+    git(repo, "branch", "-M", "main")
+    git(repo, "checkout", "-q", "-b", "work")
+    write(repo, "tests/test_total.py", "def test_total():\n    assert 1 == 1\n")
+    commit(repo, "Add a test for the total")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", "-m", "Merge the test", "work")
+    git(repo, "checkout", "-q", "work")
+    write(repo, "app.py", "def total():\n    return 2\n")
+    commit(repo, "fix: total rounds half up")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", "-m", "Merge the fix", "work")
+    c = by_name(collect.collect(repo, no_remote=True))["defects"]
+    assert c["data"]["fixes"] == 1 and c["data"]["fixes_with_tests"] == 0
+    assert "fix: total rounds half up (no test file changed)" in claims(c)
+
+
 HUNT_FINDING = """\
 ---
 number: 1
