@@ -121,7 +121,9 @@ python3 -B <kit>/box/skills/box-audit/scripts/audit.py <repo> --out <cards folde
 ```
 
 - **home**: the remote is read from `origin` and host evidence comes from `gh`.
-- **corporate**: add `--no-remote`. Host items are recorded as unavailable.
+- **corporate**: add `--no-remote`. Host items are recorded as unavailable. Once the issues
+  folder from step 6 exists, also add `--issues-folder <issues folder>`, so D counts the
+  bug-hunt passes filed there.
 
 If your agent starts isolated sessions its own way, replace `-- <judge command>` with
 `--bundle-only <folder>`, give a fresh session `<folder>/prompt.md` as its whole input, save its
@@ -213,8 +215,6 @@ Then loop until the `- Score:` line ends in `→ 9` or `→ 10`:
    ([module 08](agent-ready/modules/08-review-and-merge.md)).
 4. For D, run a bug-hunt pass ([queue-fill](box/skills/queue-fill/SKILL.md#bug-hunt-pass)) and
    fix what it finds, each fix with a check that catches the whole class.
-   **corporate**: the audit does not yet read bug-hunt issues from an issue folder, so D stays
-   ✗ on the card until issue #29 lands; record the passes anyway.
 5. Re-audit (step 4b).
 
 A 9 needs every dimension at ✓ or n/a; one ~ is allowed only with a written external blocker.

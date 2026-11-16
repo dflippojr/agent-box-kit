@@ -4,7 +4,7 @@
 
 Usage:
   collect.py REPO [--remote OWNER/NAME | --no-remote] [--runs N] [--prs N]
-                  [--gh CMD] [--format json|md] [--out FILE]
+                  [--issues-folder DIR] [--gh CMD] [--format json|md] [--out FILE]
 
   REPO          A local git checkout, or a folder in one: the whole checkout (from `git rev-parse
                 --show-toplevel`) is collected and guarded. Only tracked files at the working
@@ -16,6 +16,11 @@ Usage:
   --runs N      CI runs to read from the host (default 100, max 200).
   --prs N       Recently merged PRs judged by their head's checks as of the merge (default
                 20, max 50).
+  --issues-folder DIR
+                An issue folder in box/orchestrate's format (the one select.py reads), for a
+                project with no hosted VCS. Defect issues and bug-hunt passes are counted from
+                it as from the host, and in place of the host's issues when both are given.
+                Only its `.md` files are read; a link in it or on the way to it is refused.
   --gh CMD      The command that runs gh, split like a shell would (default: `gh` on PATH).
                 Use it when gh is a wrapper script the OS cannot execute directly.
   --format      json (default) or md, a compact rendering for the judge.
@@ -23,8 +28,10 @@ Usage:
                 existing file with other hard links. It is replaced, never written through.
 
 Exit codes: 0 evidence written; 2 usage error (REPO is not in a git checkout, --out inside it,
-a PYTHONPYCACHEPREFIX inside it without -B, bad option). A missing host, `gh` or permission is not an error: each host collector records
-`unavailable` with the reason, so a repo with no remote still gets a full report.
+a PYTHONPYCACHEPREFIX inside it without -B, an --issues-folder that is not a folder, bad option).
+A missing host, `gh` or permission is not an error: each host collector records `unavailable`
+with the reason, so a repo with no remote still gets a full report. An issue folder whose files
+cannot be read is recorded the same way.
 
 Read-only by design: the script runs only read-only git commands with optional locks off, never
 fetches, never executes code from REPO, and writes nothing inside it. Git and gh run without any
@@ -35,8 +42,9 @@ checkout is refused (exit 2). Host evidence comes from the `gh` CLI's `gh api` (
 only).
 
 Every evidence item carries a basis. `verified` means it was observed in a system's actual state:
-the host API, CI run results or git history. `read` means a file in the repo says so. The standard
-counts read-only evidence as partial at best, so the judge needs the difference.
+the host API, CI run results, git history, or the issue folder that is a hostless project's
+tracker. `read` means a file in the repo says so. The standard counts read-only evidence as
+partial at best, so the judge needs the difference.
 
 The test inventory, oracle and production collectors match file names and contents against
 keyword lists. They find candidates; they do not prove a test is real or an oracle independent.
@@ -75,6 +83,17 @@ def load_lib(name):
 
 gh_read = load_lib("gh_read")
 git_env = load_lib("git_env").git_env
+
+
+def load_select():
+    """box/orchestrate's select.py, which reads issue folders, loaded by path under another name
+    (`import select` finds the standard library's module). Loaded only for --issues-folder."""
+    path = BOX_LIB.parent / "orchestrate" / "scripts" / "select.py"
+    spec = importlib.util.spec_from_file_location("box_orchestrate_select", str(path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 
 MAX_READ = 200000
 MAX_TEST_FILES = 3000
@@ -1082,6 +1101,33 @@ def production(ctx):
             "data": {"health": health, "deploy": deploy, "kind": kind, "vendored": vendored}}
 
 
+def touches_test(commit):
+    return any(TEST_PATH.search(f) for f in commit["files"])
+
+
+def red_test_before(repo, ref, commits, untested):
+    """The fixes in `untested` whose test landed in the commit just before, in the same merge:
+    red first, the failing test and then the fix. That commit is the fix's only parent, touched a
+    test file and is not itself a fix. It is in the same merge unless the fix came in off the
+    first-parent line of `ref` (through a merge commit) while it is on that line: then it reached
+    `ref` on its own, earlier. A fast-forward leaves no trace of a merge, so two commits on the
+    first-parent line count as one merge. Git is asked for parents only when such a pair could
+    exist: an untested fix, and a commit that is not a fix and touched a test."""
+    red_tests = {c["sha"] for c in commits
+                 if touches_test(c) and not FIX_SUBJECT.search(c["subject"])}
+    if not untested or not red_tests:
+        return []
+    out = git(repo, "rev-list", "--no-walk=unsorted", "--parents",
+              *[c["sha"] for c in untested]) or ""
+    parent = {line.split()[0]: line.split()[1] for line in out.splitlines()
+              if len(line.split()) == 2}  # one parent: not a root, not a merge
+    candidates = [c for c in untested if parent.get(c["sha"]) in red_tests]
+    if not candidates:
+        return []
+    mainline = set((git(repo, "rev-list", "--first-parent", "-n", "1000", ref) or "").split())
+    return [c for c in candidates if c["sha"] in mainline or parent[c["sha"]] not in mainline]
+
+
 def _local_defects(ctx):
     """Defect evidence from local history and bug forms alone: (items, data)."""
     repo, items, data = ctx["repo"], [], {}
@@ -1099,11 +1145,15 @@ def _local_defects(ctx):
         elif line.strip() and current:
             current["files"].append(line.strip())
     fixes = [c for c in commits if FIX_SUBJECT.search(c["subject"])]
-    with_tests = [c for c in fixes if any(TEST_PATH.search(f) for f in c["files"])]
+    with_tests = [c for c in fixes if touches_test(c)]
+    red_first = red_test_before(repo, ref, commits, [c for c in fixes if c not in with_tests])
+    with_tests += red_first
     reverts = [c for c in commits if c["subject"].startswith(("Revert", "revert"))]
     items.append(item("last %d non-merge commits on %s: %d look like fixes, %d of those touched a "
-                      "test file, %d reverts" % (len(commits), ref, len(fixes), len(with_tests),
-                                                 len(reverts)), "git log", "verified"))
+                      "test file%s, %d reverts" % (
+                          len(commits), ref, len(fixes), len(with_tests),
+                          " (%d in the red-test commit just before)" % len(red_first)
+                          if red_first else "", len(reverts)), "git log", "verified"))
     for c in (reverts + [f for f in fixes if f not in with_tests and f not in reverts])[:8]:
         items.append(item("%s %s %s%s" % (c["sha"][:10], c["date"], c["subject"][:100],
                                           "" if c in reverts else " (no test file changed)"),
@@ -1119,8 +1169,61 @@ def _local_defects(ctx):
     return items, data
 
 
+def count_defect_issues(items, seen, source, gaps=(), scope=""):
+    """Add the summary of defect issues `seen` (number -> issue in the host's shape) to items:
+    how many name their introducing change, bug-hunt passes by day, the newest. `gaps` are lists
+    read only in part. Returns (traced, hunts)."""
+    traced = [i for i in seen.values() if INTRODUCED.search(i.get("body") or "")]
+    hunts = Counter((i.get("created_at") or "")[:10] for i in seen.values()
+                    if re.search(r"hunt", " ".join([i.get("title") or ""] + [
+                        l.get("name", "") for l in i.get("labels") or []]), re.I))
+    # Lists read only in part make every count below a lower bound.
+    lower = "; lower bounds, read in part: %s" % "; ".join(gaps) if gaps else ""
+    items.append(item("%s%d defect-labelled issues%s; %d name the change that introduced them; "
+                      "open %d%s" % ("at least " if gaps else "", len(seen), scope, len(traced),
+                                     sum(1 for i in seen.values() if i.get("state") == "open"),
+                                     lower), source, "verified"))
+    if hunts:
+        items.append(item("bug-hunt issues by day: %s%s" % (", ".join(
+            "%s %d" % kv for kv in sorted(hunts.items())[-6:]), lower), source, "verified"))
+    for i in sorted(seen.values(), key=lambda i: i.get("created_at") or "", reverse=True)[:8]:
+        items.append(item("#%s %s %s: %s" % (i["number"], (i.get("created_at") or "")[:10],
+                                             i.get("state"), (i.get("title") or "")[:100]),
+                          source, "verified"))
+    return traced, hunts
+
+
+def folder_defects(ctx, items, data):
+    """Defect issues from the issue folder, a hostless project's tracker, counted as from the
+    host: every issue with a defect label, open or closed."""
+    select = load_select()
+    try:
+        issues = select.read_folder(ctx["issues_folder"])
+    except select.InputError as e:
+        out = unavailable("defects", "issue folder: %s" % e)
+        out["items"], out["data"] = items, data
+        return out
+    seen, labels = {}, Counter()
+    for i in issues:
+        buggy = [n for n in i["labels"] if BUGGY_LABEL.search(n)]
+        if buggy:
+            labels.update(buggy)
+            seen[i["number"]] = {"number": i["number"], "title": i["title"],
+                                 "state": i["state"].lower(), "body": i["body"],
+                                 "labels": [{"name": n} for n in i["labels"]],
+                                 "created_at": i["createdAt"]}
+    for name in sorted(labels):
+        items.append(item("label %r: %d issues" % (name, labels[name]), "issue folder",
+                          "verified"))
+    traced, hunts = count_defect_issues(items, seen, "issue folder")
+    data.update({"defect_issues": len(seen), "traced": len(traced), "bug_hunt_days": dict(hunts)})
+    return {"name": "defects", "status": "ok", "items": items, "data": data}
+
+
 def defects(ctx):
     items, data = _local_defects(ctx)
+    if ctx.get("issues_folder") is not None:
+        return folder_defects(ctx, items, data)
     host = ctx["host"]
     if not host:
         out = unavailable("defects", ctx["host_reason"])
@@ -1157,28 +1260,11 @@ def defects(ctx):
     if refused:
         items.append(item("issues unavailable for %d defect labels, not counted: %s" % (
             len(refused), refusals), "api issues", "verified"))
-    traced = [i for i in seen.values() if INTRODUCED.search(i.get("body") or "")]
-    hunts = Counter((i.get("created_at") or "")[:10] for i in seen.values()
-                    if re.search(r"hunt", " ".join([i.get("title") or ""] + [
-                        l.get("name", "") for l in i.get("labels") or []]), re.I))
     scope = (" under %d of %d defect labels" % (len(buggy) - len(refused), len(buggy))
              if refused else "")
-    # Lists read only in part make every count below a lower bound.
     gaps = (["labels %s" % labels_error] if labels_error else []) + [
         "%r issues %s" % p for p in partial]
-    lower = "; lower bounds, read in part: %s" % "; ".join(gaps) if gaps else ""
-    items.append(item("%s%d defect-labelled issues%s; %d name the change that introduced them; "
-                      "open %d%s" % ("at least " if gaps else "", len(seen), scope, len(traced),
-                                     sum(1 for i in seen.values() if i.get("state") == "open"),
-                                     lower), "api issues", "verified"))
-    if hunts:
-        items.append(item("bug-hunt issues by day: %s%s" % (", ".join(
-            "%s %d" % kv for kv in sorted(hunts.items())[-6:]), lower), "api issues",
-            "verified"))
-    for i in sorted(seen.values(), key=lambda i: i.get("created_at") or "", reverse=True)[:8]:
-        items.append(item("#%s %s %s: %s" % (i["number"], (i.get("created_at") or "")[:10],
-                                             i.get("state"), (i.get("title") or "")[:100]),
-                          "api issues", "verified"))
+    traced, hunts = count_defect_issues(items, seen, "api issues", gaps, scope)
     data.update({"defect_issues": len(seen), "traced": len(traced), "bug_hunt_days": dict(hunts),
                  "issues_unavailable": [n for n, _ in refused],
                  "issues_incomplete": [n for n, _ in partial], "labels_incomplete": labels_error})
@@ -1207,7 +1293,8 @@ def default_branch(repo, meta):
     return name, source + ("; not confirmed by the host" if meta is not None else "")
 
 
-def collect(repo, slug=None, no_remote=False, runs=100, prs=20, runner=None, gh=None):
+def collect(repo, slug=None, no_remote=False, runs=100, prs=20, runner=None, gh=None,
+            issues_folder=None):
     repo = checkout_root(repo) or Path(repo).resolve()
     reason = None
     if no_remote:
@@ -1229,7 +1316,8 @@ def collect(repo, slug=None, no_remote=False, runs=100, prs=20, runner=None, gh=
             meta = meta or {}
     files = tracked_files(repo)
     ctx = {"repo": repo, "files": files, "links": linked_files(repo, files), "slug": slug,
-           "host": host, "host_reason": reason, "runs": runs, "prs": prs}
+           "host": host, "host_reason": reason, "runs": runs, "prs": prs,
+           "issues_folder": None if issues_folder is None else str(issues_folder)}
     ctx["default_branch"], branch_source = default_branch(repo, meta)
     results = []
     for fn in COLLECTORS:
@@ -1267,6 +1355,7 @@ def main(argv=None):
     ap.add_argument("--no-remote", action="store_true")
     ap.add_argument("--runs", type=int, default=100)
     ap.add_argument("--prs", type=int, default=20)
+    ap.add_argument("--issues-folder")
     ap.add_argument("--gh")
     ap.add_argument("--format", choices=("json", "md"), default="json")
     ap.add_argument("--out")
@@ -1282,6 +1371,10 @@ def main(argv=None):
         print("collect: --out must be outside the audited repo (report mode is read-only): %s"
               % unsafe_output(args.out, repo), file=sys.stderr)
         return 2
+    if args.issues_folder is not None and not os.path.isdir(args.issues_folder):
+        print("collect: --issues-folder %s is not a folder" % args.issues_folder,
+              file=sys.stderr)
+        return 2
     if args.remote and not re.match(r"^[\w.-]+/[\w.-]+$", args.remote):
         print("collect: --remote must be OWNER/NAME", file=sys.stderr)
         return 2
@@ -1291,7 +1384,7 @@ def main(argv=None):
         print("collect: --gh: %s" % e, file=sys.stderr)
         return 2
     evidence = collect(repo, args.remote, args.no_remote, max(1, min(args.runs, 200)),
-                       max(0, min(args.prs, 50)), gh=gh)
+                       max(0, min(args.prs, 50)), gh=gh, issues_folder=args.issues_folder)
     text = json.dumps(evidence, indent=1, default=list) if args.format == "json" else \
         render_md(evidence)
     if args.out:

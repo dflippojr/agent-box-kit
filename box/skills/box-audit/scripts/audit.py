@@ -4,6 +4,7 @@ card, write it. Stdlib only. CI runs it on Python 3.10 (Linux, macOS, Windows) a
 
 Usage:
   python -B audit.py REPO [--remote OWNER/NAME | --no-remote] [--gh CMD] [--runs N] [--prs N]
+           [--issues-folder DIR]
            [--name NAME] [--date YYYY-MM-DD] [--out DIR] [--judge-line TEXT]
            [--keep-env NAME]... [--copy-home RELPATH]... [--work-root DIR] [--timeout SECONDS]
            (-- JUDGE_COMMAND [ARG...] | --bundle-only DIR)
@@ -11,7 +12,9 @@ Usage:
   REPO            The checkout to audit, or a folder in it: the whole checkout (from `git
                   rev-parse --show-toplevel`) is audited and guarded. Nothing inside the
                   checkout is written, bytecode included.
-  --remote ... --prs   Passed to collect.py.
+  --remote ... --prs, --issues-folder   Passed to collect.py. --issues-folder DIR counts
+                  defect issues and bug-hunt passes from an issue folder, for a repo with no
+                  hosted VCS.
   --name          Repo name for the card (default: the remote's name, else the checkout's
                   folder name).
   --date          Card date (default: today).
@@ -118,6 +121,7 @@ def main(argv=None):
     ap.add_argument("--gh")
     ap.add_argument("--runs", type=int, default=100)
     ap.add_argument("--prs", type=int, default=20)
+    ap.add_argument("--issues-folder")
     ap.add_argument("--name")
     ap.add_argument("--date", default=datetime.date.today().isoformat())
     ap.add_argument("--out", default=".")
@@ -159,6 +163,7 @@ def main(argv=None):
     collect_args += ["--remote", args.remote] if args.remote else []
     collect_args += ["--no-remote"] if args.no_remote else []
     collect_args += ["--gh", args.gh] if args.gh else []
+    collect_args += ["--issues-folder", args.issues_folder] if args.issues_folder else []
 
     tmp = Path(tempfile.mkdtemp(prefix="box-audit-", dir=tmp_root))
     try:

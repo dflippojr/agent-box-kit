@@ -66,7 +66,8 @@ symlink keeps them resolving from the link.
 3. **Run the audit:**
 
    ```
-   python -B scripts/audit.py <REPO> [--remote OWNER/NAME | --no-remote] --out <folder> \
+   python -B scripts/audit.py <REPO> [--remote OWNER/NAME | --no-remote] \
+       [--issues-folder <DIR>] --out <folder> \
        --judge-line "isolated: <how; probe result and date>" \
        [same --copy-home, --keep-env and --work-root as the probe] -- <judge command>
    ```
@@ -114,7 +115,7 @@ written. Each has a fallback:
 
 | Step | Fallback |
 |---|---|
-| Host evidence (Report step 3) | Run `audit.py` with `--no-remote`. Every host item is recorded as unavailable, with the reason, and the card says which marks it would have settled. |
+| Host evidence (Report step 3) | Run `audit.py` with `--no-remote`. Every host item is recorded as unavailable, with the reason, and the card says which marks it would have settled. Add `--issues-folder DIR` once the project keeps an issue folder: D's defect issues and bug-hunt passes are then counted from it, as from the host. |
 | Filing (File) | Run `file_issues.py <card> --repo OWNER/NAME --offline`, with any `OWNER/NAME`-shaped name for the target. It prints the issues without reading the host and says the label and duplicate checks were skipped. Paste that text into the host's issue tracker by hand. Never `--apply`. |
 
 ## What the scripts collect
@@ -129,9 +130,10 @@ written. Each has a fallback:
 | `oracles` | Candidate outside oracles: property tests, golden or recorded data, validators, contract tests, reconciliation, eval judges, review workflows | J |
 | `proof_rules` | Instruction files, AGENTS.md proof sections, verify skill or UI-testing contract, disposable-instance contract, PR template, PR-body lint, docs layer | W |
 | `production` | Health endpoints, telemetry and alerting, deploy and scheduled workflows, containers, installers, vendored copies | P |
-| `defects` | Fix and revert commits and whether they touched tests, defect-labelled issues and whether they name the introducing change, bug-hunt passes, the bug form | D |
+| `defects` | Fix and revert commits and whether they touched tests (or their red test landed in the commit just before, in the same merge), defect-labelled issues and whether they name the introducing change, bug-hunt passes, the bug form. Issues come from the host, or from `--issues-folder` | D |
 
-`verified` items were observed in a system's state (host API, CI results, git history). `read`
+`verified` items were observed in a system's state (host API, CI results, git history, the
+issue folder of a project with no host). `read`
 items are what a file says. The card keeps them apart because the standard counts read-only
 evidence as partial at best.
 
