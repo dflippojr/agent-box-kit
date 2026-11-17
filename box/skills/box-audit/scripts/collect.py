@@ -132,12 +132,20 @@ ORACLES = {
     "mutation testing": r"mutmut|stryker|pitest|cosmic-ray",
 }
 
-HEALTH = re.compile(r"[\"'`/](healthz?|readyz|livez|_health|heartbeat|version)[\"'`/]")
+# A route: the name has a `/` on at least one side, so a quoted `"version"` key is not one.
+HEALTH = re.compile(r"/(healthz?|readyz|livez|_health|heartbeat|version)[\"'`/]"
+                    r"|[\"'`](healthz?|readyz|livez|_health|heartbeat|version)/")
 TELEMETRY = re.compile(r"sentry|opentelemetry|rollbar|bugsnag|honeybadger|datadog|prometheus|"
                        r"newrelic|statsd|healthchecks\.io|uptime[-_ ]?kuma|ntfy|pagerduty",
                        re.I)
 INSTALLER = re.compile(r"electron-builder|pyinstaller|\bnsis\b|\bwix\b|inno ?setup|\.msi\b|"
                        r"\.dmg\b|cargo-dist|goreleaser|msix|\.AppImage|flatpak|snapcraft", re.I)
+# Copies of a box that the repo ships or tests with, not its own: left out of every collector
+# that reads ctx["files"], and listed once by repo_facts.
+COPY_DIR = re.compile(r"(^|/)(templates|fixtures|examples|testdata)/", re.I)
+# Where GitHub reads a PR template: the root, docs/ or .github/, alone or as a folder of them.
+PR_TEMPLATE = re.compile(r"^(docs/|\.github/)?(pull_request_template\.md|"
+                         r"PULL_REQUEST_TEMPLATE/[^/]+\.md)$", re.I)
 VENDOR_DIR = re.compile(r"(^|/)(vendor|vendored|third[_-]party|external)/")
 VENDOR_OUT = re.compile(r"vendor[-_](into|out|to)|(copy|sync|publish)[-_](to|into)[-_]", re.I)
 VENDOR_OUT_TEXT = re.compile(r"(?i)vendor(ed)? (it |them |this )?into|copied into (the|a|another) "
@@ -318,6 +326,12 @@ def repo_facts(ctx):
              item("%d tracked files; top extensions %s" % (
                  len(ctx["files"]), ", ".join("%s %d" % e for e in exts.most_common(6))),
                   "git ls-files", "verified")]
+    if ctx["copies"]:
+        # Grouped by the path up to the first copy folder, without its closing `/`.
+        folders = Counter(f[:COPY_DIR.search(f).end() - 1] for f in ctx["copies"])
+        items.append(item("%d template or fixture copies, not counted: %s" % (
+            len(ctx["copies"]), ", ".join("%s (%d)" % kv for kv in sorted(folders.items()))),
+            "git ls-files", "verified"))
     if ctx["links"]:
         items.append(item("%d tracked paths are links or sit under one, so they were not read and "
                           "what they hold is unavailable: %s" % (
@@ -662,7 +676,9 @@ def summarize_runs(runs, default_branch):
 def protection(ctx):
     # `_` is both a separator and a word character, so only `-` and `.` may start a later part.
     ready = r"(^|/)ready(?:[-_.]\w+(?:[-.]\w+)*)?$|(^|/)ready\.\w+$"
-    items, data = [], {"ready_scripts": [f for f in ctx["files"] if re.search(ready, f)]}
+    # Only where a gate lives, as local_gate reads it: the top level, scripts/, bin/ or tools/.
+    items, data = [], {"ready_scripts": [f for f in ctx["files"] if re.search(ready, f) and (
+        "/" not in f or f.count("/") == 1 and f.startswith(("scripts/", "bin/", "tools/")))]}
     for f in data["ready_scripts"]:
         items.append(item("ready script present: %s" % f, f))
     for f in ctx["files"]:
@@ -1059,7 +1075,7 @@ def proof_rules(ctx):
     items.append(item("disposable-instance contract: %s" % (", ".join(contracts[:4]) or
                                                             "none found"), "git ls-files",
                       "verified"))
-    templates = [f for f in ctx["files"] if re.search(r"pull_request_template\.md$", f, re.I)]
+    templates = [f for f in ctx["files"] if PR_TEMPLATE.match(f)]
     data["pr_templates"] = {}
     for t in templates:
         text = read(repo, t) or ""
@@ -1383,7 +1399,9 @@ def collect(repo, slug=None, no_remote=False, runs=100, prs=20, runner=None, gh=
         else:
             meta = meta or {}
     files = tracked_files(repo)
-    ctx = {"repo": repo, "files": files, "links": linked_files(repo, files), "slug": slug,
+    ctx = {"repo": repo, "files": [f for f in files if not COPY_DIR.search(f)],
+           "copies": [f for f in files if COPY_DIR.search(f)],
+           "links": linked_files(repo, files), "slug": slug,
            "host": host, "host_reason": reason, "runs": runs, "prs": prs,
            "issues_folder": None if issues_folder is None else str(issues_folder)}
     ctx["default_branch"], branch_source = default_branch(repo, meta)
