@@ -9,6 +9,13 @@ Build every repo-level box item that templates can create, for a new or existing
 repo, on a branch, and check the result with box-audit's own collectors. The bar is
 [`../../STANDARD.md`](../../STANDARD.md); the auditor is [box-audit](../box-audit/SKILL.md).
 
+Install it by symlinking this folder into your skills folder, not by copying it:
+`scripts/bootstrap.py` loads box-audit's collectors and `box/profiles/profile.py` from the
+checkout it sits in, and the `../` paths here resolve through the link on POSIX only. On Windows,
+do not install it: have the agent read this `SKILL.md` in the checkout, and run each script by
+path from there, as in `python -B <kit>/box/skills/box-bootstrap/scripts/bootstrap.py`, where
+`<kit>` is the checkout.
+
 ## Done
 
 Done means every repo-level item bootstrap can create is present, as box-audit's collectors

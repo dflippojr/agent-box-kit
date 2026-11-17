@@ -77,6 +77,18 @@ covers orienting in a new repo?" It should answer `modules/01-orient-a-repo.md`.
 **If not:** check that `SKILL.md` sits directly in the copied folder, not in a second
 `agent-ready` folder inside it, and start a new session; most agents read skills at start-up.
 
+**The box skills** in `<kit>/box/skills/` (box-audit, box-bootstrap, queue-fill and the rest) need
+no install for this guide, which runs their scripts by path. To let your agent load one as a
+skill, symlink its folder into the skills folder, not copy it: its `SKILL.md` and scripts reach
+other folders of the kit by relative paths such as `../../STANDARD.md`, which resolve through a
+symlink on Linux and macOS but not from a copy. On Windows, which applies `..` before following a
+link, do not install them: tell the agent to read the skill's `SKILL.md` where it sits in
+`<kit>/box/skills/`, and run its scripts by path from `<kit>`, as this guide does.
+
+```
+ln -s <kit>/box/skills/box-audit <skills folder>/box-audit
+```
+
 ## 3. Orient the repo
 
 Start a session in `<repo>` and ask the agent to follow agent-ready
