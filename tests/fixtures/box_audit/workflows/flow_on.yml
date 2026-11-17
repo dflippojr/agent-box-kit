@@ -1,0 +1,7 @@
+name: flow
+on: [push, "pull_request", workflow_dispatch]  # a flow sequence
+jobs:
+  only:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok

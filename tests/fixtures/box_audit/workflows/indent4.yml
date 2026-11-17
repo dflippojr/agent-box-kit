@@ -1,0 +1,25 @@
+# Four-space indentation throughout.
+name: four
+on:
+    push:
+        branches: [main]
+        paths:
+            - "src/**"
+    pull_request:
+    workflow_dispatch:
+        inputs:
+            level:
+                description: depth
+                default: quick
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - run: pytest -q
+    lint:
+        needs: test
+        runs-on: ubuntu-latest
+        steps:
+            - name: lint
+              run: ruff check .

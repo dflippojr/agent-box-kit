@@ -1,0 +1,3 @@
+name: flow mapping
+on: {push: {branches: [main, release]}, pull_request: {types: [opened]}}
+jobs: {check: {runs-on: ubuntu-latest, steps: [{run: make check}]}}
