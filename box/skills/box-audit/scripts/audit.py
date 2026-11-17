@@ -35,8 +35,8 @@ Usage:
 
 The card's `- Proven:` line is computed from its score row by `card.py`, replacing any the judge
 wrote, and its `- Standard:` line is this kit's Standard value (`card.py standard`): a hash of
-the rubric that scored it. The bundle's prompt gives the judge that value too. If the card fails `card.py check`, the judge gets one more attempt with the problems
-listed.
+the rubric that scored it. The bundle's prompt gives the judge that value too. If the card
+fails `card.py check`, the judge gets one more attempt with the problems listed.
 
 Refusals. Nothing inside the audited checkout is written, and a REPO below its top stands for
 the whole checkout. Each of these exits 2 before the judge runs: an --out inside the checkout

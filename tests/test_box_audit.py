@@ -1600,8 +1600,12 @@ def test_prepare_hashes_the_standard_it_inlines(tmp_path):
     other.write_text((ROOT / "box" / "STANDARD.md").read_text(encoding="utf-8") + "\nNew rule.\n",
                      encoding="utf-8")
     text = judge.prepare(ev, tmp_path / "b", standard=other).read_text(encoding="utf-8")
-    assert "- Value for the `- Standard:` line: %s" % card.standard_hash(standard=other) in text
-    assert card.standard_hash(standard=other) != card.standard_hash()
+    value = card.standard_hash(standard_text=other.read_text(encoding="utf-8"))
+    assert "- Value for the `- Standard:` line: %s" % value in text
+    assert value != card.standard_hash()
+    same = card.standard_hash(standard_text=(ROOT / "box" / "STANDARD.md").read_text(
+        encoding="utf-8"))
+    assert same == card.standard_hash()  # the text read and the file hash alike
 
 
 def test_proven_command():

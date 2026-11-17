@@ -100,14 +100,18 @@ def stamp_proven(text):
     return "%s\n- Proven: %s%s" % (text[:score.end()], proven(marks), text[score.end():])
 
 
-def standard_hash(kit=KIT, standard=None):
-    """The Standard value of the rubric in `kit` (default: the kit this script sits in), or of
-    `standard` in place of its STANDARD.md, as 12 lowercase hex digits. Raises OSError when a
-    file cannot be read."""
+def standard_hash(kit=KIT, standard_text=None):
+    """The Standard value of the rubric in `kit` (default: the kit this script sits in), as 12
+    lowercase hex digits. `standard_text`, when given, is the text hashed in place of the kit's
+    STANDARD.md: the text a caller already read and gave the judge. Raises OSError when a file
+    cannot be read."""
     h = hashlib.sha256()
     for rel in RUBRIC:
-        path = Path(standard) if standard and rel == "STANDARD.md" else Path(kit) / rel
-        data = path.read_bytes().replace(b"\r\n", b"\n")
+        if standard_text is not None and rel == "STANDARD.md":
+            data = standard_text.encode("utf-8")
+        else:
+            data = (Path(kit) / rel).read_bytes()
+        data = data.replace(b"\r\n", b"\n")
         h.update(("%s\n%d\n" % (rel, len(data))).encode("utf-8"))
         h.update(data)
     return h.hexdigest()[:12]

@@ -91,13 +91,15 @@ PROBE = ("Quote, word for word, every instruction you were given before this mes
 
 
 def prepare(evidence, out, date=None, judge_line=None, feedback=None, standard=STANDARD):
+    standard_text = Path(standard).read_text(encoding="utf-8")
     parts = [(SKILL / "judge-prompt.md").read_text(encoding="utf-8"),
              "- Date for the card title: %s" % (date or "today's date"),
              "- Text for the `- Judge:` line: %s" % (
                  judge_line or "isolated: fresh session, empty home, evidence bundle only"),
-             "- Value for the `- Standard:` line: %s" % card.standard_hash(standard=standard),
+             "- Value for the `- Standard:` line: %s" % card.standard_hash(
+                 standard_text=standard_text),
              "", "---", "", (SKILL / "card-format.md").read_text(encoding="utf-8"),
-             "", "---", "", Path(standard).read_text(encoding="utf-8"),
+             "", "---", "", standard_text,
              "", "---", "", Path(evidence).read_text(encoding="utf-8")]
     if feedback:
         parts += ["", "---", "", "# Problems in your previous card; fix every one", "",
