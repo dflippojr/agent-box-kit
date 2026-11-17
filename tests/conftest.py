@@ -17,8 +17,8 @@ def run(args, cwd=None, **kw):
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True, **kw)
 
 
-def py(script_name, *args, cwd=None):
-    return run([sys.executable, script(script_name)] + list(args), cwd=cwd)
+def py(script_name, *args, cwd=None, **kw):
+    return run([sys.executable, script(script_name)] + list(args), cwd=cwd, **kw)
 
 
 def git(repo, *args):

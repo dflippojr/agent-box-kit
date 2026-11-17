@@ -1450,8 +1450,15 @@ from pathlib import Path
 prompt = sys.stdin.read()
 seen = []
 home = Path(os.path.expanduser("~"))
-for f in [home / ".agent" / "AGENTS.md"] + [p / "AGENTS.md" for p in [Path.cwd()] +
-                                             list(Path.cwd().parents)]:
+# Walk up only to the test's temp dir: a checkout around pytest's base temp dir holds its own
+# AGENTS.md, which is not a file the test planted.
+STOP = Path(__STOP__)
+folders = []
+for p in [Path.cwd()] + list(Path.cwd().parents):
+    folders.append(p)
+    if p == STOP:
+        break
+for f in [home / ".agent" / "AGENTS.md"] + [p / "AGENTS.md" for p in folders]:
     if f.is_file():
         seen.append(f.read_text())
 print("PROMPT:" + prompt.splitlines()[0] if prompt else "PROMPT:none")
@@ -1478,7 +1485,7 @@ def owner(tmp_path, monkeypatch):
     root = tmp_path / "work-root"
     root.mkdir()
     cli = tmp_path / "cli" / "fake_cli.py"
-    write(cli.parent, cli.name, FAKE_CLI)
+    write(cli.parent, cli.name, FAKE_CLI.replace("__STOP__", repr(str(tmp_path.resolve()))))
     bundle = tmp_path / "bundle"
     write(bundle, "prompt.md", "Score this repo.\n")
     return {"home": home, "root": root, "cli": cli, "bundle": bundle, "tmp": tmp_path}
