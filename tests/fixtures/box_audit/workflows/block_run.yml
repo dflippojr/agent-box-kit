@@ -1,0 +1,26 @@
+name: block run
+on:
+- push
+- pull_request
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: many lines
+      run: |
+        set -e
+        pytest -q
+        # a shell comment, not a YAML one
+        echo "jobs:"
+    - run: >-
+        npm test
+        --ci
+      continue-on-error: true
+    - uses: actions/upload-artifact@v4
+      with:
+        name: report
+  report:
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+    - run: echo done

@@ -1,0 +1,22 @@
+name: filters
+on:
+  push:
+    branches:
+      - main
+      - 'release/**'
+    tags: ["v*"]
+    paths-ignore: [docs/**]
+  pull_request_target:
+    types: [labeled]
+  workflow_call:
+    inputs:
+      push:
+        type: string
+    secrets:
+      token:
+        required: true
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/check.sh

@@ -1,0 +1,17 @@
+name: quoted
+"on":
+  "push":
+  'pull_request':
+jobs:
+  "test":
+    runs-on: ubuntu-latest
+    steps:
+      - run: pytest
+  'lint-all':  # a comment after a quoted key
+    runs-on: ubuntu-latest
+    steps:
+      - run: ruff check .
+  docs:   # a comment after a plain key
+    runs-on: ubuntu-latest
+    steps:
+      - run: mkdocs build

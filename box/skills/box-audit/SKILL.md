@@ -122,13 +122,13 @@ written. Each has a fallback:
 
 | Collector | Evidence | Feeds |
 |---|---|---|
-| `ci_config` | Workflow triggers, jobs, commands, pinned actions, cancel-in-progress, steps that skip without a secret, soft-fail commands, schedules, other CI systems, the local one-command gate | G, W |
+| `ci_config` | Workflow triggers, jobs (at any indentation, quoted keys too), commands, pinned actions, cancel-in-progress, steps that skip without a secret, soft-fail commands, schedules, other CI systems, the local one-command gate | G, W |
 | `ci_runs` | The last N runs: conclusions, default-branch cancellations, re-attempts, flake suspects | G, D |
-| `protection` | Effective rules on the default branch (required checks, PR rules, required workflows), rulesets, classic protection, or a `ready` script; CODEOWNERS on gate paths | G |
+| `protection` | Effective rules on the default branch (required checks, PR rules, required workflows), rulesets, classic protection, or a `ready` script (top level, `scripts/`, `bin/` or `tools/`); CODEOWNERS on gate paths | G |
 | `merged_prs` | Recent merged PRs that merged red: as of `merged_at`, a check whose newest run (highest id) started by then had finished and failed or was cancelled, or a commit status in failure, read from the head's full run and status history. A check is its app and name, and its workflow for GitHub Actions, so a workflow triggered again on the head replaces its earlier run. A head without that history in full, or without timestamps, or whose Actions workflows cannot all be read, is unknown unless already red. The head's current results, reruns after the merge included, are a separate snapshot, kept when the merge verdict is unknown | G |
 | `tests` | Test files by kind: plain unit, mocked, real dependency, mixed, end-to-end; images used in CI and in production files | R |
 | `oracles` | Candidate outside oracles: property tests, golden or recorded data, validators, contract tests, reconciliation, eval judges, review workflows | J |
-| `proof_rules` | Instruction files, AGENTS.md proof sections, verify skill or UI-testing contract, disposable-instance contract, PR template, PR-body lint, docs layer | W |
+| `proof_rules` | Instruction files, AGENTS.md proof sections, verify skill or UI-testing contract, disposable-instance contract, PR template (where GitHub reads one), PR-body lint, docs layer | W |
 | `production` | Health endpoints, telemetry and alerting, deploy and scheduled workflows, containers, installers, vendored copies | P |
 | `defects` | Fix and revert commits and whether they touched tests (or their red test landed in the commit just before, in the same merge), defect-labelled issues and whether they name the introducing change, bug-hunt passes, the bug form. Issues come from the host, or from `--issues-folder` | D |
 
@@ -144,6 +144,11 @@ evidence as partial at best.
   code or fetch. A tracked file that is a symlink or junction, or sits under one, is listed but
   not read, since it could point at the owner's own instructions. Running the gate yourself, which the standard asks for W, is a step for the
   person acting on the card, not for the audit.
+- Files under a `templates/`, `fixtures/`, `examples/` or `testdata/` folder are copies the
+  repo ships or tests with, not its own box: the `repo` collector lists them once, and no other
+  collector counts them.
+- Workflows are read line by line, not by a YAML parser: anchors, aliases and multi-line flow
+  collections are not followed.
 - Git sees none of the caller's `GIT_*` variables, so a `safe.directory` set only in a file
   named by `GIT_CONFIG_GLOBAL` does not apply; git then reads the default global config.
 - Judge isolation covers startup context, not the filesystem: the judge could still read a path

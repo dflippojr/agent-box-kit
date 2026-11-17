@@ -317,6 +317,87 @@ def test_oracles_proof_rules_and_production(box_repo):
     assert "into another repo or site: scripts/vendor-into-site" in prod
 
 
+COPY_FOLDERS = ("templates", "box/skills/kit/templates", "tests/fixtures/app", "examples/demo",
+                "pkg/testdata")
+
+
+def test_template_and_fixture_copies_are_not_the_repos_own_box(repo):
+    """A repo that ships templates or test fixtures holds copies of a box; they are not its own."""
+    for base in COPY_FOLDERS:
+        write(repo, base + "/ready.py", "print('ready')\n")
+        write(repo, base + "/pull_request_template.md", "## Proof\n\n### Not verified\n")
+        write(repo, base + "/verify-skill.md", "verify\n")
+        write(repo, base + "/docs/disposable-instance.md", "instance\n")
+        write(repo, base + "/docs/ui-testing.md", "contract\n")
+        write(repo, base + "/AGENTS.md", "# Agents\n")
+        write(repo, base + "/app.py", "ROUTES = ['/healthz']\nimport sentry_sdk\n")
+        write(repo, base + "/test_app.py", "def test_app():\n    assert True\n")
+        write(repo, base + "/Dockerfile", "FROM python:3.12\n")
+    commit(repo, "Add templates and fixtures")
+    c = by_name(collect.collect(repo, no_remote=True))
+    assert c["protection"]["data"]["ready_scripts"] == []
+    proof = c["proof_rules"]["data"]
+    assert proof["instruction_files"] == [] and proof["verify"] == []
+    assert proof["instance_contract"] == [] and proof["pr_templates"] == {}
+    assert c["tests"]["data"]["files"] == 0
+    prod = c["production"]["data"]
+    assert prod["health"] == [] and prod["kind"] == "unknown"
+    assert "sentry" not in claims(c["production"])
+    copies = [i["claim"] for i in c["repo"]["items"] if "not counted" in i["claim"]]
+    assert copies == ["45 template or fixture copies, not counted: box/skills/kit/templates (9), "
+                      "examples (9), pkg/testdata (9), templates (9), tests/fixtures (9)"]
+
+
+@pytest.mark.parametrize("path, counted", [
+    ("pull_request_template.md", True),
+    ("docs/pull_request_template.md", True),
+    (".github/PULL_REQUEST_TEMPLATE.md", True),
+    (".github/PULL_REQUEST_TEMPLATE/feature.md", True),
+    ("docs/PULL_REQUEST_TEMPLATE/fix.md", True),
+    ("PULL_REQUEST_TEMPLATE/fix.md", True),
+    ("web/pull_request_template.md", False),
+    (".github/old/pull_request_template.md", False),
+    ("docs/guide/PULL_REQUEST_TEMPLATE/fix.md", False),
+])
+def test_only_pr_templates_the_host_uses_count(repo, path, counted):
+    write(repo, path, "## Proof\n")
+    commit(repo, "Add a PR template")
+    found = by_name(collect.collect(repo, no_remote=True))["proof_rules"]["data"]["pr_templates"]
+    assert list(found) == ([path] if counted else [])
+
+
+@pytest.mark.parametrize("path, counted", [
+    ("ready.sh", True),
+    ("scripts/ready.py", True),
+    ("bin/ready", True),
+    ("tools/ready-check.sh", True),
+    ("src/ready.py", False),
+    ("scripts/sub/ready.py", False),
+    ("docs/ready.md", False),
+])
+def test_only_ready_scripts_where_a_gate_lives_count(repo, path, counted):
+    write(repo, path, "echo ready\n")
+    commit(repo, "Add a ready script")
+    found = by_name(collect.collect(repo, no_remote=True))["protection"]["data"]["ready_scripts"]
+    assert found == ([path] if counted else [])
+
+
+@pytest.mark.parametrize("source, endpoint", [
+    ("@app.get('/version')\n", True),
+    ("http.HandleFunc(\"/healthz\", ok)\n", True),
+    ("path('health/', views.health)\n", True),
+    ("url = base + '/api/livez/'\n", True),
+    ("row = {'kind': kind, 'version': version}\n", False),
+    ("key = (r['task'], r[\"version\"])\n", False),
+    ("WORDS = ['heartbeat', 'health']\n", False),
+])
+def test_health_endpoints_are_route_shaped(repo, source, endpoint):
+    write(repo, "src/app.py", source)
+    commit(repo, "Add the app")
+    health = by_name(collect.collect(repo, no_remote=True))["production"]["data"]["health"]
+    assert health == (["src/app.py:1"] if endpoint else [])
+
+
 def test_defects_from_git_history(box_repo):
     c = by_name(collect.collect(box_repo))["defects"]
     assert c["data"] == {"commits": 5, "fixes": 3, "fixes_with_tests": 1, "reverts": 1}
