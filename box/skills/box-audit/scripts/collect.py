@@ -373,14 +373,55 @@ def strip_shell_comment(command):
     return command
 
 
+YAML_KEY = re.compile(r"(?:\"((?:[^\"\\]|\\.)*)\"|'((?:[^']|'')*)'|([\w-]+))\s*:(?:\s|$)")
+
+
+def yaml_key(line):
+    """The key of a stripped `key:` mapping line, plain or quoted, or None."""
+    m = YAML_KEY.match(line)
+    if not m:
+        return None
+    if m.group(1) is not None:
+        return re.sub(r"\\([\"\\])", r"\1", m.group(1))
+    return m.group(2).replace("''", "'") if m.group(2) is not None else m.group(3)
+
+
+def flow_names(value):
+    """The names a one-line value lists: the entries of a flow sequence, the keys of a flow
+    mapping (nested collections skipped), or the words of a plain scalar."""
+    value = strip_comment(value.strip())
+    if not value.startswith(("[", "{")):
+        return re.findall(r"[\w-]+", value)
+    names, depth, entry = [], 0, ""
+    for ch in value:
+        if ch in "[{":
+            depth += 1
+            if depth == 1:
+                continue
+        elif ch in "]}":
+            depth -= 1
+        if depth == 1 and ch == ",":
+            names.append(entry)
+            entry = ""
+        elif depth >= 1:
+            entry += ch
+    names.append(entry)
+    if value.startswith("{"):
+        names = [yaml_key(e.strip() + " ") or e for e in names]
+    return [strip_comment(e.strip()) for e in names if e and e.strip()]
+
+
 def parse_workflow(text):
-    """Line-based facts from a GitHub Actions workflow. Not a YAML parser; enough for evidence."""
+    """Line-based facts from a GitHub Actions workflow. Not a YAML parser; enough for evidence.
+    The triggers and jobs are the keys one level under `on:` and `jobs:`, at whatever indentation
+    that section's first line uses; keys may be quoted, and a one-line `on:` or `jobs:` value
+    may be a flow sequence or mapping."""
     lines = text.splitlines()
     facts = {"triggers": [], "jobs": [], "runs": [], "uses": [], "cancel_in_progress": [],
              "continue_on_error": 0, "soft_fail": [], "secret_conditions": [], "images": [],
              "schedules": [], "runners": [],
              "opens_issues": bool(re.search(r"gh issue create|issues\.create|create-issue", text))}
-    section, job, block_indent = None, None, None
+    section, job, block_indent, child = None, None, None, None
     for n, raw in enumerate(lines, 1):
         line = raw.rstrip()
         stripped = line.strip()
@@ -394,19 +435,29 @@ def parse_workflow(text):
                     facts["soft_fail"].append((n, stripped[:120]))
                 continue
             block_indent = None
-        if indent == 0:
-            m = re.match(r"^[\"']?(on|true)[\"']?:\s*(.*)$", line)
-            section = "on" if m else line.split(":")[0]
-            if m and m.group(2):
-                facts["triggers"] += re.findall(r"[\w-]+", m.group(2))
+        if indent == 0 and section == "on" and re.match(r"-(\s|$)", stripped):
+            # A block sequence of triggers may sit at its key's own column.
+            facts["triggers"] += flow_names(stripped[1:])
             continue
-        if section == "on" and indent == 2 and stripped.endswith(":"):
-            facts["triggers"].append(stripped[:-1].strip("'\""))
-        elif section == "on" and indent == 2 and ":" in stripped:
-            facts["triggers"].append(stripped.split(":")[0].strip("'\""))
-        if section == "jobs" and indent == 2 and re.match(r"^[\w-]+:\s*$", stripped):
-            job = stripped[:-1]
-            facts["jobs"].append(job)
+        if indent == 0:
+            key = yaml_key(stripped)
+            section, child = ("on" if key in ("on", "true") else key), None
+            value = YAML_KEY.sub("", stripped, count=1) if key is not None else ""
+            if section in ("on", "jobs") and value:
+                facts["triggers" if section == "on" else "jobs"] += flow_names(value)
+            continue
+        child = indent if child is None else child
+        if section == "on" and indent == child:
+            key = yaml_key(stripped)
+            if key is not None:
+                facts["triggers"].append(key)
+            elif re.match(r"-(\s|$)", stripped):
+                facts["triggers"] += flow_names(stripped[1:])
+        if section == "jobs" and indent == child:
+            key = yaml_key(stripped)
+            if key is not None:
+                job = key
+                facts["jobs"].append(job)
         m = re.match(r"^(-\s*)?run:\s*(.*)$", stripped)
         if m:
             if BLOCK_SCALAR.match(m.group(2)):
