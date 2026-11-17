@@ -77,13 +77,15 @@ is the checkout.
 
    It runs `collect.py` (evidence, read-only), `judge.py prepare` and `judge.py run` (scoring),
    then `card.py check`. A card that fails the check goes back to the judge once with the
-   problems. Exit 0 means the card is written and valid. `audit.py` refuses (exit 2) any output,
+   problems. It writes the card's `- Standard:` line, a hash of the rubric that scored it.
+   Exit 0 means the card is written and valid. `audit.py` refuses (exit 2) any output,
    temp or cache path inside the checkout; run it with `python -B` from outside the checkout.
    Its docstring lists each refusal.
 
    If your harness starts isolated sessions its own way, use `--bundle-only <folder>` instead of
    the judge command, give the judge `<folder>/prompt.md` as its whole input, save its answer as
-   the card and run `python -B scripts/card.py check <card>`.
+   the card and run `python -B scripts/card.py check <card>`. The prompt gives the judge the
+   `- Standard:` value; `python -B scripts/card.py standard` prints it.
 
 4. **Read the card before anyone acts on it.** The judge works from evidence, and the collectors
    match keywords: a "real dependency" test or an "oracle" is a lead. Spot-check each mark you

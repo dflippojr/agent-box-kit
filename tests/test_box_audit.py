@@ -1512,6 +1512,102 @@ def test_card_proven_line_is_checked_when_present():
     assert card.stamp_proven(wrong) == stamped  # the script's value replaces the judge's
 
 
+def test_card_standard_line_is_optional_and_checked_when_present():
+    marks = ["✓", "~", "✗", "~", "–", "~"]
+    old = make_card(marks)
+    assert card.card_standard(old) is None and not card.check(old)  # a card from before the line
+    new = card.stamp_standard(card.stamp_proven(old), "0123456789ab")
+    assert "\n- Proven: 5.0\n- Standard: 0123456789ab\n\n## Summary" in new
+    assert card.card_standard(new) == "0123456789ab" and not card.check(new)
+    assert card.stamp_standard(new, "0123456789ab") == new
+    judged = new.replace("- Standard: 0123456789ab", "- Standard: made-up")
+    assert card.stamp_standard(judged, "0123456789ab") == new  # the script's value replaces it
+    no_proven = card.stamp_standard(old, "0123456789ab")
+    assert "→ 8`\n- Standard: 0123456789ab\n" in no_proven and not card.check(no_proven)
+    assert card.stamp_standard("no score here\n", "0123456789ab") == "no score here\n"
+    for bad in ("0123456789AB", "0123456789a", "0123456789abc", "unknown", ""):
+        problems = card.check(new.replace("0123456789ab", bad))
+        assert any("must be 12 lowercase hex digits" in p for p in problems), (bad, problems)
+    twice = new.replace("- Standard: 0123456789ab", "- Standard: 0123456789ab\n- Standard: "
+                        "0123456789ab")
+    assert "more than one `- Standard:` line" in card.check(twice)
+
+
+def test_card_check_notes_an_unknown_standard_and_standard_prints_the_value(tmp_path):
+    old, new = tmp_path / "old.md", tmp_path / "new.md"
+    old.write_text(make_card(["✓", "~", "✗", "~", "–", "~"]), encoding="utf-8")
+    new.write_text(card.stamp_standard(old.read_text(encoding="utf-8"), card.standard_hash()),
+                   encoding="utf-8")
+    r = script("card.py", "check", old)
+    assert r.returncode == 0 and r.stdout.strip() == "CARD_OK"
+    assert "standard: unknown" in r.stderr
+    r = script("card.py", "check", new)
+    assert r.returncode == 0 and r.stdout.strip() == "CARD_OK" and r.stderr == ""
+    r = script("card.py", "standard")
+    assert r.returncode == 0 and r.stdout.strip() == card.standard_hash()
+    assert re.match(r"^[0-9a-f]{12}$", r.stdout.strip())
+
+
+def kit_copy(tmp_path):
+    kit = tmp_path / "kit"
+    shutil.copytree(str(ROOT / "box"), str(kit), ignore=shutil.ignore_patterns("__pycache__"))
+    return kit
+
+
+def test_standard_changes_when_and_only_when_a_rubric_file_changes(tmp_path):
+    kit = kit_copy(tmp_path)
+    base = card.standard_hash(kit)
+    assert base == card.standard_hash()  # a copied kit gives the checkout's value
+    for rel in card.RUBRIC:
+        path = kit / rel
+        original = path.read_bytes()  # CRLF already, in a Windows checkout of the `.md` files
+        lf = original.replace(b"\r\n", b"\n")
+        path.write_bytes(original + b"\n")
+        assert card.standard_hash(kit) != base, rel
+        path.write_bytes(lf.replace(b"\n", b"\r\n"))  # the same text with CRLF line endings
+        assert card.standard_hash(kit) == base, rel
+        path.write_bytes(lf)
+        assert card.standard_hash(kit) == base, rel
+        path.write_bytes(original)
+        assert card.standard_hash(kit) == base, rel
+    for rel in card.RUBRIC:  # the whole rubric checked out with CRLF line endings
+        path = kit / rel
+        path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    assert card.standard_hash(kit) == base
+    for rel in ("skills/box-audit/scripts/card.py", "skills/box-audit/scripts/judge.py",
+                "skills/box-audit/scripts/audit.py", "skills/box-audit/SKILL.md",
+                "skills/box-crosspollinate/scripts/compare.py", "ratchet/README.md",
+                "README.md"):
+        (kit / rel).write_bytes((kit / rel).read_bytes() + b"\n# changed\n")
+        assert card.standard_hash(kit) == base, rel
+
+
+def test_standard_frames_each_file_so_moved_text_still_changes_it(tmp_path):
+    kit = kit_copy(tmp_path)
+    base = card.standard_hash(kit)
+    prompt = kit / "skills" / "box-audit" / "judge-prompt.md"
+    fmt = kit / "skills" / "box-audit" / "card-format.md"
+    text = prompt.read_bytes()
+    prompt.write_bytes(text[:-1])
+    fmt.write_bytes(text[-1:] + fmt.read_bytes())  # the same bytes, one moved across the seam
+    assert card.standard_hash(kit) != base
+
+
+def test_prepare_hashes_the_standard_it_inlines(tmp_path):
+    ev = tmp_path / "evidence.md"
+    ev.write_text("# Evidence for app\n", encoding="utf-8")
+    other = tmp_path / "STANDARD.md"
+    other.write_text((ROOT / "box" / "STANDARD.md").read_text(encoding="utf-8") + "\nNew rule.\n",
+                     encoding="utf-8")
+    text = judge.prepare(ev, tmp_path / "b", standard=other).read_text(encoding="utf-8")
+    value = card.standard_hash(standard_text=other.read_text(encoding="utf-8"))
+    assert "- Value for the `- Standard:` line: %s" % value in text
+    assert value != card.standard_hash()
+    same = card.standard_hash(standard_text=(ROOT / "box" / "STANDARD.md").read_text(
+        encoding="utf-8"))
+    assert same == card.standard_hash()  # the text read and the file hash alike
+
+
 def test_proven_command():
     r = script("card.py", "proven", "G ✓ · R ~ · J ✗ · W ★ · P – · D ~ → 8")
     assert r.returncode == 0 and r.stdout.strip() == "6.0"
@@ -1754,8 +1850,10 @@ def test_audit_report_writes_only_the_card(box_repo, owner, monkeypatch, capsys)
     assert snapshot(box_repo) == before
     cards = list(out.iterdir())
     assert [c.name for c in cards] == ["box-audit-repo-2026-10-19.md"]
-    assert cards[0].read_text(encoding="utf-8") == \
-        good.strip().replace("→ 8`\n", "→ 8`\n- Proven: 5.0\n") + "\n"
+    assert cards[0].read_text(encoding="utf-8") == good.strip().replace(
+        "→ 8`\n", "→ 8`\n- Proven: 5.0\n- Standard: %s\n" % card.standard_hash()) + "\n"
+    assert "- Value for the `- Standard:` line: %s" % card.standard_hash() in \
+        (state / "prompt0.md").read_text(encoding="utf-8")
     prompt = (state / "prompt0.md").read_text(encoding="utf-8")
     assert "Host evidence: unavailable (skipped with --no-remote)" in prompt
     assert "## Proving a change" in prompt  # the audited repo's proof rules reach the judge
@@ -1953,8 +2051,10 @@ def test_report_run_in_a_fresh_process_leaves_the_checkout_unchanged(repo, owner
     assert sorted(set(after) ^ set(before)) == []
     assert after == before
     assert (repo / "box-audit-app-2026-10-19.md").read_text(encoding="utf-8") == "an old card\n"
+    # The copied kit's own rubric is hashed, and it is the same rubric as this checkout's.
+    assert card.standard_hash(repo / "box") == card.standard_hash()
     assert (out / "box-audit-app-2026-10-19.md").read_text(encoding="utf-8") == \
-        card.stamp_proven(good.strip()) + "\n"
+        card.stamp_standard(card.stamp_proven(good.strip()), card.standard_hash()) + "\n"
 
 
 # Each case below is one way the caller's machine could make report mode change the checkout.

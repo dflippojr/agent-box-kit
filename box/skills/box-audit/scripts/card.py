@@ -7,10 +7,11 @@ Usage:
   card.py score "ROW"     Print the overall score for a row such as
                           "G ✓ · R ~ · J ✗ · W ~ · P – · D ~".
   card.py proven "ROW"    Print the row's Proven value, such as 5.0.
+  card.py standard        Print this kit's Standard value, such as 0123456789ab.
   card.py --help          Print this usage.
 
-Exit codes: 0 card valid, row scored, Proven or usage printed; 1 card invalid; 2 usage error (unreadable card,
-malformed row).
+Exit codes: 0 card valid, row scored, Proven, Standard or usage printed; 1 card invalid; 2 usage
+error (unreadable card, malformed row, an unreadable rubric file).
 
 The overall rule is the one in box/STANDARD.md:
   10 every applicable dimension is ★;
@@ -19,7 +20,15 @@ The overall rule is the one in box/STANDARD.md:
 Proven, also from the standard: ✓ and ★ count 1, ~ 0.5, ✗ 0, averaged over the dimensions that
 apply, times 10, to one decimal with halves rounded up. A card's `- Proven:` line is optional
 (audit.py writes it from the score row); when present, `check` requires it to match.
+
+Standard: the first 12 hex digits of a SHA-256 over the four files that decide a card's marks,
+STANDARD.md, judge-prompt.md, card-format.md and collect.py, each framed by its path in the kit
+and its length, with CRLF read as LF so a Windows checkout gives the same value. A card's
+`- Standard:` line is optional (audit.py writes it); when present, `check` requires 12 lowercase
+hex digits, and `check` notes `standard: unknown` on stderr when it is absent. It is a content
+hash, so it works from a copied kit as well as a checkout.
 """
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -35,6 +44,11 @@ OTHER_LABELS = {"ready", "needs-refinement", "P0", "P1", "P2"}
 ISSUE_PARTS = ["**Problem**", "**Want**", "**Constraints**", "**Dependencies**", "**Out of scope**"]
 HEADER = ["Repo", "Remote", "Host evidence", "Judge", "Score"]
 ROW = re.compile(r"`((?:[A-Z] \S · ){5}[A-Z] \S) → (\d+)`")
+KIT = Path(__file__).resolve().parents[3]  # box/: scripts -> box-audit -> skills -> box
+# Paths in the kit, in hashing order. Moving or renaming one changes the value too.
+RUBRIC = ["STANDARD.md", "skills/box-audit/judge-prompt.md", "skills/box-audit/card-format.md",
+          "skills/box-audit/scripts/collect.py"]
+STANDARD_LINE = re.compile(r"^- Standard:[^\n]*\n?", re.M)
 
 
 def parse_row(row):
@@ -84,6 +98,39 @@ def stamp_proven(text):
     text = PROVEN.sub("", text)
     score = re.search(r"^- Score: .*$", text, re.M)
     return "%s\n- Proven: %s%s" % (text[:score.end()], proven(marks), text[score.end():])
+
+
+def standard_hash(kit=KIT, standard_text=None):
+    """The Standard value of the rubric in `kit` (default: the kit this script sits in), as 12
+    lowercase hex digits. `standard_text`, when given, is the text hashed in place of the kit's
+    STANDARD.md: the text a caller already read and gave the judge. Raises OSError when a file
+    cannot be read."""
+    h = hashlib.sha256()
+    for rel in RUBRIC:
+        if standard_text is not None and rel == "STANDARD.md":
+            data = standard_text.encode("utf-8")
+        else:
+            data = (Path(kit) / rel).read_bytes()
+        data = data.replace(b"\r\n", b"\n")
+        h.update(("%s\n%d\n" % (rel, len(data))).encode("utf-8"))
+        h.update(data)
+    return h.hexdigest()[:12]
+
+
+def stamp_standard(text, value):
+    """`text` with one `- Standard: value` line, right after `- Proven:` (or `- Score:`),
+    replacing any Standard line the judge wrote. Unchanged when the card has no Score line."""
+    if not re.search(r"^- Score: .*$", text, re.M):
+        return text
+    text = STANDARD_LINE.sub("", text)
+    anchor = re.search(r"^- Proven: .*$", text, re.M) or re.search(r"^- Score: .*$", text, re.M)
+    return "%s\n- Standard: %s%s" % (text[:anchor.end()], value, text[anchor.end():])
+
+
+def card_standard(text):
+    """The card's Standard value, or None when it has no `- Standard:` line."""
+    m = re.search(r"^- Standard: (.*)$", text, re.M)
+    return m.group(1).strip() if m else None
 
 
 def sections(text):
@@ -222,6 +269,12 @@ def check(text):
     if given and marks and given.group(1).strip() != proven(marks):
         out.append("Proven %s does not follow the standard: the score row gives %s" % (
             given.group(1).strip(), proven(marks)))
+    standards = re.findall(r"^- Standard:(.*)$", text, re.M)
+    if len(standards) > 1:
+        out.append("more than one `- Standard:` line")
+    elif standards and not re.match(r"^ [0-9a-f]{12}$", standards[0].rstrip()):
+        out.append("Standard %r must be 12 lowercase hex digits, as `card.py standard` prints"
+                   % standards[0].strip())
     if not re.search(r"^## Summary[ \t]*\n(?:[ \t]*\n)*(?!#)\S", text, re.M):
         out.append("## Summary missing or empty")
     found = sections(text)
@@ -286,6 +339,13 @@ def main(argv=None):
     if argv in (["--help"], ["-h"]):
         print(__doc__.split("\n\n")[1])
         return 0
+    if argv == ["standard"]:
+        try:
+            print(standard_hash())
+        except OSError as e:
+            print("card: cannot read the rubric: %s" % e, file=sys.stderr)
+            return 2
+        return 0
     if len(argv) != 2 or argv[0] not in ("check", "score", "proven"):
         print(__doc__.split("\n\n")[1], file=sys.stderr)
         return 2
@@ -308,6 +368,9 @@ def main(argv=None):
             print("- " + p)
         return 1
     print("CARD_OK")
+    if card_standard(text) is None:
+        print("card: standard: unknown (no `- Standard:` line, so the rubric that scored this "
+              "card is not recorded)", file=sys.stderr)
     return 0
 
 

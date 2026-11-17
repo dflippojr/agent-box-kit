@@ -11,6 +11,7 @@
 - Judge: <isolated: how the scoring session was started>
 - Score: `G ✓ · R ~ · J ✗ · W ~ · P – · D ~ → 8`
 - Proven: 5.0
+- Standard: <the 12 hex digits given with the instructions>
 
 ## Summary
 
@@ -68,6 +69,12 @@ none
   `audit.py` computes it and writes it in place of any the judge gave; `card.py proven "ROW"`
   prints it. A card without the line still passes the check, so a card scored before Proven, or
   by a harness's own judge, stays valid.
+- **Standard.** The `- Standard:` line records which rubric scored the card: the first 12 hex
+  digits of a hash over `STANDARD.md`, `judge-prompt.md`, this file and `collect.py`. It changes
+  when one of them does (line endings aside) and not otherwise, so cards with different values were scored under
+  different rules or evidence. `audit.py` writes it in place of any the judge gave; `card.py
+  standard` prints it. When present it is 12 lowercase hex digits. A card without the line still
+  passes the check, which notes `standard: unknown`, so a card scored before the line stays valid.
 - **Mark.** Each section's `**Mark:**` equals its mark in the score row.
 - **n/a.** Only R and P may be `–`, and the section then has a `**Reason:**` line. Its Evidence,
   Gap and Proposed issues parts may each say `none`.

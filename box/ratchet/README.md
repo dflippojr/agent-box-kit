@@ -6,7 +6,8 @@ catch nothing. It is [STANDARD.md](../STANDARD.md#d-defect-ratchet)'s D dimensio
 kit itself.
 
 It needs an **outcome ledger**, one row per merged PR, and a list of the rubric and lesson changes
-with their dates. `scripts/ratchet.py` compares the PRs merged before each change with those merged
+with their dates. A change to the rubric or the evidence collector shows up as a new `- Standard:`
+value on the box-audit cards scored after it. `scripts/ratchet.py` compares the PRs merged before each change with those merged
 after it.
 
 ## The ledger format
