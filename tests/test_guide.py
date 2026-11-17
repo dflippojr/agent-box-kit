@@ -106,6 +106,19 @@ def test_guide_is_linked_from_readme():
     assert "GUIDE.md" in (ROOT / "README.md").read_text(encoding="utf-8")
 
 
+def test_guide_states_the_box_skill_install_and_the_windows_path():
+    """Issue #38: the box skills are symlinked from the checkout, never copied, and on Windows
+    they are read from the checkout and their scripts run by path."""
+    paras = [" ".join(p.split()) for p in re.split(r"\n[ \t]*\n", guide_text())]
+    install = [p for p in paras if "symlink" in p and "<kit>/box/skills/" in p]
+    assert install, "GUIDE.md does not say to symlink the box skill folders"
+    assert any("not copy" in p or "not by copying" in p for p in install), install
+    windows = [p for p in install if "Windows" in p]
+    assert windows, "GUIDE.md does not give the Windows path for the box skills"
+    for needed in ("SKILL.md", "by path"):
+        assert any(needed in p for p in windows), (needed, windows)
+
+
 def test_every_link_target_exists():
     problems = []
     for target in re.findall(r"\]\(([^)\s]+)\)", guide_text()):

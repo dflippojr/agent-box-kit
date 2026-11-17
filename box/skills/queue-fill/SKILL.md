@@ -18,6 +18,13 @@ VCS, an issue folder (`--folder DIR`): one `<number>.md` per issue, the format
 [`../../orchestrate/README.md`](../../orchestrate/README.md#issue-folder-no-hosted-vcs) defines
 and `select.py` reads.
 
+Install it by symlinking this folder into your skills folder, not by copying it: its scripts load
+box-audit's `card.py` and `file_issues.py` and the orchestrator's `select.py` from the checkout
+they sit in, and the `../` paths here resolve through the link on POSIX only. On Windows, do not
+install it: have the agent read this `SKILL.md` in the checkout, and run each script by path from
+there, as in `python -B <kit>/box/skills/queue-fill/scripts/issue_lint.py`, where `<kit>` is the
+checkout.
+
 ## The issue shape
 
 Every pass writes this shape, and `scripts/issue_lint.py` checks it with box-audit's own card
