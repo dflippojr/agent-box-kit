@@ -26,6 +26,7 @@ def test_marked_test_fails_at_setup_inside_a_checkout(pytester):
     checkout.mkdir()
     git(checkout, "init", "-q")
     (checkout / "AGENTS.md").write_text("rules\n", encoding="utf-8")
+    (checkout / "scratch").mkdir()  # pytest makes the base temp dir, not its parents
     result = pytester.runpytest("-p", "no:cacheprovider", "--strict-markers",
                                 "--basetemp=%s" % (checkout / "scratch" / "pytest"))
     result.assert_outcomes(passed=1, errors=1)

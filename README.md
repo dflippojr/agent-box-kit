@@ -86,6 +86,9 @@ python -m pip install -r ci/requirements-test.txt
 python -m pytest tests -q      # needs pytest; takes tens of seconds; 5 `sh` tests skip on Windows
 ```
 
+Tests marked `outside_checkout` need pytest's temp dir outside any git checkout; inside one
+they fail at setup with the fix (`--basetemp=<dir outside one>`).
+
 The scripts are stdlib-only. CI (`.github/workflows/tests.yml`) runs them on GitHub-hosted Linux,
 macOS and Windows runners (Python 3.10) and on Ubuntu 22.04 with Python 3.8 and 3.14. See
 `EVIDENCE.md` for what the tests do and do not establish.

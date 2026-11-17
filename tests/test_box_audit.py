@@ -162,6 +162,9 @@ def test_collect_writes_nothing_inside_the_repo(box_repo, tmp_path):
     assert json.loads(out.read_text(encoding="utf-8"))["collectors"]
 
 
+# outside_checkout: the plain folder must not be inside any checkout, or git finds the
+# enclosing one; collect.py passes no GIT_* variable to git, so a ceiling cannot fence it.
+@pytest.mark.outside_checkout
 def test_collect_refuses_out_inside_repo_and_non_repos(box_repo, tmp_path):
     r = script("collect.py", box_repo, "--no-remote", "--out", box_repo / "evidence.json")
     assert r.returncode == 2 and "outside" in r.stderr
@@ -1536,6 +1539,9 @@ def test_copy_home_copies_logins_refuses_instructions_and_keeps_refreshes(owner,
     assert "refusing --copy-home" in capfd.readouterr().err
 
 
+# outside_checkout: judge.sweep() deletes nothing when any folder above the work root holds
+# .git, by design, and it walks the folders in Python, so no git variable can fence it.
+@pytest.mark.outside_checkout
 def test_folders_left_by_a_killed_run_are_swept(owner):
     stale = owner["root"] / "box-audit-judge-killed"
     write(stale, "home/.agent/credentials.json", "{}")

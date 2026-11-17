@@ -9,6 +9,36 @@ pytest_plugins = ["pytester"]
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "agent-ready" / "scripts"
 
+OUTSIDE_CHECKOUT = "needs a temp dir outside any git checkout: pass --basetemp=<dir outside one>"
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "outside_checkout: " + OUTSIDE_CHECKOUT + ". Keep the list short and give "
+        "each marked test its reason.")
+
+
+def enclosing_checkout(path):
+    """The first folder at or above `path` that holds `.git`, or None."""
+    path = Path(path).resolve()
+    for folder in [path] + list(path.parents):
+        if (folder / ".git").exists() or (folder / ".git").is_symlink():
+            return folder
+    return None
+
+
+@pytest.fixture(autouse=True)
+def _outside_checkout(request, tmp_path_factory):
+    """Fail, not skip, a marked test whose temp dir sits inside a git checkout: a skip reads
+    as green, and the test's subject cannot be exercised there."""
+    if request.node.get_closest_marker("outside_checkout") is None:
+        return
+    base = tmp_path_factory.getbasetemp()
+    checkout = enclosing_checkout(base)
+    if checkout is not None:
+        pytest.fail("%s (%s is inside the checkout at %s)" % (OUTSIDE_CHECKOUT, base, checkout),
+                    pytrace=False)
+
 
 def script(name):
     return str(SCRIPTS / name)
