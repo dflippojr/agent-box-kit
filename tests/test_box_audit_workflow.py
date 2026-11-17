@@ -121,7 +121,7 @@ jobs:
      ["push"]),
     ("name: ci\non: push, pull_request\njobs:\n    test:\n        steps:\n"
      "            - run: pytest\n", ["pull_request", "push"]),
-])
+], ids=["2-space", "4-space", "quoted-job-key", "4-space-flow-on"])
 def test_the_issues_probe_inputs(text, triggers):
     f = collect.parse_workflow(text)
     assert f["triggers"] == triggers
