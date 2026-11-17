@@ -126,9 +126,72 @@ def test_cards_more_than_max_age_apart_warn_and_still_compare():
     assert r.returncode == 0
     assert "WARNING: the cards are 46 days apart (repo-gamma 2026-09-20, repo-beta 2026-11-05), " \
            "more than 30" in r.stdout
-    assert "WARNING" not in compare_run(*CARDS, "--max-age", "46").stdout
+    # The fixtures predate the `- Standard:` line, so each run also warns about the standard;
+    # only the age warning comes and goes with --max-age and the dates.
+    out = compare_run(*CARDS, "--max-age", "46").stdout
+    assert "days apart" not in out and "not all scored under one known standard" in out
     assert "more than 45" in compare_run(*CARDS, "--max-age", "45").stdout
-    assert "WARNING" not in compare_run(ALPHA, BETA).stdout
+    out = compare_run(ALPHA, BETA).stdout
+    assert "days apart" not in out and "not all scored under one known standard" in out
+
+
+def with_standard(tmp_path, path, value):
+    """A copy of the fixture card at `path` in `tmp_path`, stamped with Standard `value`."""
+    text = path.read_text(encoding="utf-8")
+    copy = tmp_path / path.name
+    copy.write_text(card.stamp_standard(text, value), encoding="utf-8")
+    return copy
+
+
+ONE, TWO = "0123456789ab", "ba9876543210"
+
+
+def test_every_fixture_card_passes_the_check_with_or_without_a_standard(tmp_path):
+    fixtures = sorted(FIXTURES.glob("*.md"))
+    assert fixtures
+    for path in fixtures:
+        assert card.check(path.read_text(encoding="utf-8")) == [], path.name
+        stamped = with_standard(tmp_path, path, card.standard_hash())
+        assert card.check(stamped.read_text(encoding="utf-8")) == [], path.name
+        assert run(AUDIT_SCRIPTS / "card.py", "check", stamped).stdout.strip() == "CARD_OK"
+
+
+def test_cards_scored_under_different_or_unknown_standards_warn_and_still_compare(tmp_path):
+    alpha = with_standard(tmp_path, ALPHA, ONE)
+    beta = with_standard(tmp_path, BETA, TWO)
+    r = compare_run(alpha, beta, GAMMA)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "WARNING: the cards were not all scored under one known standard (repo-alpha %s, " \
+           "repo-beta %s, repo-gamma unknown)" % (ONE, TWO) in r.stdout
+    assert "Strongest per dimension:" in r.stdout  # it still compares
+    r = compare_run(alpha, with_standard(tmp_path, BETA, ONE))
+    assert r.returncode == 0 and "WARNING" not in r.stdout  # one known standard: no warning
+    r = compare_run(alpha, BETA)
+    assert "(repo-alpha %s, repo-beta unknown)" % ONE in r.stdout
+
+
+def test_strict_refuses_mixed_standards_and_writes_nothing(tmp_path):
+    alpha = with_standard(tmp_path, ALPHA, ONE)
+    out = tmp_path / "out"
+    out.mkdir()
+    for cards in ([alpha, with_standard(tmp_path, BETA, TWO)], [alpha, BETA], [ALPHA, BETA]):
+        r = compare_run(*cards, "--strict", "--out", out)
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert r.stderr.startswith("compare: --strict: the cards were not all scored under one "
+                                   "known standard"), r.stderr
+        assert r.stdout == "" and not list(out.iterdir())
+    r = compare_run(alpha, with_standard(tmp_path, BETA, ONE), "--strict", "--out", out)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "WARNING" not in r.stdout and list(out.iterdir())
+
+
+def test_strict_in_process(tmp_path, capsys):
+    alpha = with_standard(tmp_path, ALPHA, ONE)
+    assert compare.main([str(alpha), str(BETA), "--strict"]) == 2
+    assert "repo-beta unknown" in capsys.readouterr().err
+    beta = with_standard(tmp_path, BETA, ONE)
+    assert compare.main([str(alpha), str(beta), "--strict"]) == 0
+    assert compare.standard_warning([compare.read_card(alpha), compare.read_card(beta)]) is None
 
 
 def write_proposals(tmp_path, *cards):

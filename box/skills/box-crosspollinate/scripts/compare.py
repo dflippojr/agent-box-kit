@@ -4,12 +4,16 @@ practice to the weaker repos. Reads cards only: it never re-scores a card or rea
 Stdlib only. CI runs it on Python 3.10 (Linux, macOS, Windows) and 3.8 (Linux).
 
 Usage:
-  compare.py CARD CARD [CARD...] [--max-age DAYS] [--out DIR]
+  compare.py CARD CARD [CARD...] [--max-age DAYS] [--strict] [--out DIR]
 
   CARD        A box-audit score card that passes `card.py check`, one per repo. Two cards for
               the same repo are refused: pass the newest.
   --max-age   Warn when the oldest and newest card dates are more than DAYS apart (default 30).
               The comparison still runs: a stale card may score a box that has since changed.
+  --strict    Refuse (exit 2) cards scored under different standards, instead of warning.
+              Without it, cards whose `- Standard:` values differ, or any card without the
+              line (an unknown standard), print a warning and the comparison still runs: a
+              mark may not mean the same under another rubric or evidence collector.
   --out       Write each weaker repo's proposals to DIR/crosspollinate-<repo>-<date>.md, <date>
               being the newest card's. An existing file is never overwritten. Without --out the
               proposals are printed after the report. `file_issues.py` in box-audit files a
@@ -23,10 +27,11 @@ mark on a dimension is below the strongest gets one proposal for that dimension,
 "Port the <dimension> from <repo>", in card-format.md's proposal shape and labels, naming the
 source paths the strongest card's evidence cites.
 
-Exit codes: 0 report printed (and any proposal files written), stale warning or not; 1 a card
-fails `card.py check`, nothing compared; 2 usage error (fewer than two cards, an unreadable card,
-two cards for one repo, a bad --max-age, an --out that is not a folder or a proposal file that
-already exists).
+Exit codes: 0 report printed (and any proposal files written), stale or mixed-standard warning
+or not; 1 a card fails `card.py check`, nothing compared; 2 usage error (fewer than two cards, an
+unreadable card, two cards for one repo, a bad --max-age, an --out that is not a folder or a
+proposal file that already exists, or, with --strict, cards with different or unknown standards;
+nothing is written).
 """
 import argparse
 import datetime
@@ -120,7 +125,8 @@ def read_card(path):
                      "gap": card.part(body, "Gap") or ""}
     return {"path": str(path), "repo": repo, "date": date, "marks": dict(zip(card.DIMENSIONS,
                                                                            marks)),
-            "score": int(row.group(2)), "proven": card.proven(marks), "dims": dims}
+            "score": int(row.group(2)), "proven": card.proven(marks),
+            "standard": card.card_standard(text), "dims": dims}
 
 
 def strongest(cards, dim):
@@ -144,6 +150,18 @@ def age_warning(cards, max_age):
                     days, dated[0]["repo"], dated[0]["date"], dated[-1]["repo"],
                     dated[-1]["date"], max_age))
     return None
+
+
+def standard_warning(cards):
+    """Why the cards may not have been scored under one standard, or None when every card has
+    the same `- Standard:` value."""
+    values = [c["standard"] for c in cards]
+    if None not in values and len(set(values)) == 1:
+        return None
+    named = ", ".join("%s %s" % (c["repo"], c["standard"] or "unknown") for c in cards)
+    return ("the cards were not all scored under one known standard (%s): a mark may not mean the "
+            "same under another rubric or evidence collector; re-audit under one standard before "
+            "acting." % named)
 
 
 def matrix(cards):
@@ -254,6 +272,9 @@ def report(cards, max_age):
     warning = age_warning(cards, max_age)
     if warning:
         lines.append(warning)
+    warning = standard_warning(cards)
+    if warning:
+        lines.append("WARNING: " + warning)
     lines += [""] + matrix(cards) + ["", "Strongest per dimension:"]
     for dim in card.DIMENSIONS:
         mark, best = strongest(cards, dim)
@@ -275,6 +296,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("cards", nargs="+")
     ap.add_argument("--max-age", type=int, default=30)
+    ap.add_argument("--strict", action="store_true")
     ap.add_argument("--out")
     args = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
@@ -292,6 +314,8 @@ def main(argv=None):
                 raise UsageError("two cards for %s (%s, %s): pass the newest" % (
                     c["repo"], seen[c["repo"]], c["path"]))
             seen[c["repo"]] = c["path"]
+        if args.strict and standard_warning(cards):
+            raise UsageError("--strict: %s" % standard_warning(cards))
         files = [(c, proposals_for(c, cards)) for c in cards]
         targets = {}
         if args.out is not None:

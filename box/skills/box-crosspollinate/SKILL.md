@@ -25,7 +25,7 @@ checkout it sits in, and the `../box-audit/` paths below resolve through the lin
 1. Run:
 
    ```
-   python -B scripts/compare.py <card> <card> [<card>...] [--max-age DAYS] --out <folder>
+   python -B scripts/compare.py <card> <card> [<card>...] [--max-age DAYS] [--strict] --out <folder>
    ```
 
    It prints a matrix of repo against the G R J W P D marks with each card's date, score and
@@ -39,8 +39,11 @@ checkout it sits in, and the `../box-audit/` paths below resolve through the lin
    gets no proposal for it. An existing file is never overwritten. Without `--out`, the proposals
    are printed instead. The script's header lists its exit codes.
 
-2. **Mind the warning.** Cards more than `--max-age` days apart (default 30) print a `WARNING:`
+2. **Mind the warnings.** Cards more than `--max-age` days apart (default 30) print a `WARNING:`
    line. A stale card may score a box that has changed since: re-audit that repo before filing.
+   Cards whose `- Standard:` values differ, or a card without one, print another: they were
+   scored under different rules or evidence, so the strongest mark may not have met today's bar.
+   Re-audit the odd ones out. `--strict` refuses such a set instead (exit 2).
 
 3. **Read the proposals before anyone acts on them.** A higher mark is the judge's reading of
    that repo's evidence, not proof the practice fits the weaker repo. Check the quoted evidence
