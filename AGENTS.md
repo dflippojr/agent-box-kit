@@ -27,6 +27,7 @@ This repo is documentation. Editing it well means keeping it short, honest and p
 - **Scripts are code.** Anything in `agent-ready/scripts/` is stdlib-only, has tests in `tests/`,
   and its header states its options and exit codes. Run `python -m pytest tests -q` before saying
   a script change is done. Exit code 1 must not double as "error" where it already means a verdict.
+  Tests marked `outside_checkout` need pytest's temp dir outside any git checkout.
 - Test files must not contain secret-shaped literals; build them at runtime (see the existing
   tests) so the guard does not flag its own repo.
 - Do not commit or push without the owner's go-ahead.

@@ -162,6 +162,9 @@ def test_collect_writes_nothing_inside_the_repo(box_repo, tmp_path):
     assert json.loads(out.read_text(encoding="utf-8"))["collectors"]
 
 
+# outside_checkout: the plain folder must not be inside any checkout, or git finds the
+# enclosing one; collect.py passes no GIT_* variable to git, so a ceiling cannot fence it.
+@pytest.mark.outside_checkout
 def test_collect_refuses_out_inside_repo_and_non_repos(box_repo, tmp_path):
     r = script("collect.py", box_repo, "--no-remote", "--out", box_repo / "evidence.json")
     assert r.returncode == 2 and "outside" in r.stderr
@@ -1450,8 +1453,15 @@ from pathlib import Path
 prompt = sys.stdin.read()
 seen = []
 home = Path(os.path.expanduser("~"))
-for f in [home / ".agent" / "AGENTS.md"] + [p / "AGENTS.md" for p in [Path.cwd()] +
-                                             list(Path.cwd().parents)]:
+# Walk up only to the test's temp dir: a checkout around pytest's base temp dir holds its own
+# AGENTS.md, which is not a file the test planted.
+STOP = Path(__STOP__)
+folders = []
+for p in [Path.cwd()] + list(Path.cwd().parents):
+    folders.append(p)
+    if p == STOP:
+        break
+for f in [home / ".agent" / "AGENTS.md"] + [p / "AGENTS.md" for p in folders]:
     if f.is_file():
         seen.append(f.read_text())
 print("PROMPT:" + prompt.splitlines()[0] if prompt else "PROMPT:none")
@@ -1478,7 +1488,7 @@ def owner(tmp_path, monkeypatch):
     root = tmp_path / "work-root"
     root.mkdir()
     cli = tmp_path / "cli" / "fake_cli.py"
-    write(cli.parent, cli.name, FAKE_CLI)
+    write(cli.parent, cli.name, FAKE_CLI.replace("__STOP__", repr(str(tmp_path.resolve()))))
     bundle = tmp_path / "bundle"
     write(bundle, "prompt.md", "Score this repo.\n")
     return {"home": home, "root": root, "cli": cli, "bundle": bundle, "tmp": tmp_path}
@@ -1529,6 +1539,9 @@ def test_copy_home_copies_logins_refuses_instructions_and_keeps_refreshes(owner,
     assert "refusing --copy-home" in capfd.readouterr().err
 
 
+# outside_checkout: judge.sweep() deletes nothing when any folder above the work root holds
+# .git, by design, and it walks the folders in Python, so no git variable can fence it.
+@pytest.mark.outside_checkout
 def test_folders_left_by_a_killed_run_are_swept(owner):
     stale = owner["root"] / "box-audit-judge-killed"
     write(stale, "home/.agent/credentials.json", "{}")

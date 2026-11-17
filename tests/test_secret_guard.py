@@ -333,7 +333,10 @@ def test_read_inside_reads_a_plain_file_in_a_folder(repo, monkeypatch, by_path):
     assert sg.read_inside(root, "d/e/notes.txt", sg.MAX_FILE_BYTES) == b"inside\n"
 
 def test_not_a_git_repo_is_an_error(tmp_path):
-    r = py("secret_guard.py", "--staged", "--dir", str(tmp_path))
+    # The ceiling stops git's walk up at the temp dir, so a checkout around pytest's base temp
+    # dir (a sandbox that keeps scratch files in the working copy) is not found instead.
+    env = dict(os.environ, GIT_CEILING_DIRECTORIES=str(tmp_path.resolve().parent))
+    r = py("secret_guard.py", "--staged", "--dir", str(tmp_path), env=env)
     assert r.returncode not in (0, 1)
 
 
