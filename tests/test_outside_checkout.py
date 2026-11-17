@@ -1,6 +1,7 @@
 """The `outside_checkout` marker: a test that needs pytest's temp dir outside any git checkout
 fails at setup, with the cause and the fix, when the base temp dir sits inside one. It fails
 rather than skips, because a skip reads as green."""
+import re
 from pathlib import Path
 
 from conftest import git
@@ -30,5 +31,7 @@ def test_marked_test_fails_at_setup_inside_a_checkout(pytester):
     result = pytester.runpytest("-p", "no:cacheprovider", "--strict-markers",
                                 "--basetemp=%s" % (checkout / "scratch" / "pytest"))
     result.assert_outcomes(passed=1, errors=1)
-    assert result.stdout.str().count(MESSAGE) == 1, result.stdout.str()
-    result.stdout.fnmatch_lines(["*ERROR at setup of test_marked*"])
+    # The setup error's own text is the message; the short summary may repeat it, depending on
+    # the terminal width, so match it under the header rather than counting it.
+    result.stdout.re_match_lines([r".*ERROR at setup of test_marked.*", "^" + re.escape(MESSAGE)],
+                                 consecutive=True)
