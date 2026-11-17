@@ -18,7 +18,10 @@ beside it.
 
 Install it by symlinking this folder into your skills folder, not by copying it: its paths, such
 as `../../STANDARD.md` and `scripts/judge.py`, are relative to the checkout, and only a POSIX
-symlink keeps them resolving from the link.
+symlink keeps them resolving from the link. On Windows, which applies `..` before following a
+link, do not install it: have the agent read this `SKILL.md` in the checkout, and run each script
+by path from there, as in `python -B <kit>/box/skills/box-audit/scripts/audit.py`, where `<kit>`
+is the checkout.
 
 ## Inputs
 

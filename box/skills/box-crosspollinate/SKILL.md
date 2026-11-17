@@ -11,9 +11,14 @@ several finished cards side by side and, for each dimension, proposes porting th
 repo's practice to the weaker ones.
 
 It reads cards only. It does not re-score them or read the repos: the card's marks and evidence
-are the input, checked by box-audit's own `card.py`. Install it by symlinking this folder, not by
-copying it, as box-audit's skill says: `scripts/compare.py` loads box-audit's `card.py` from the
-checkout it sits in, and the `../box-audit/` paths below resolve through the link on POSIX.
+are the input, checked by box-audit's own `card.py`.
+
+Install it by symlinking this folder into your skills folder, not by copying it, as box-audit's
+skill says: `scripts/compare.py` loads box-audit's `card.py` from the checkout it sits in, and the
+`../box-audit/` paths below resolve through the link on POSIX only. On Windows, do not install it:
+have the agent read this `SKILL.md` in the checkout, and run each script by path from there, as
+in `python -B <kit>/box/skills/box-crosspollinate/scripts/compare.py`, where `<kit>` is the
+checkout.
 
 ## Inputs
 

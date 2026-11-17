@@ -15,6 +15,12 @@ sessions and grade every check a script can grade. A judge sees only what both s
 shown as X and Y in random order, and is never told that versions exist. Scripts, not the judge,
 compute the verdict.
 
+Install it by symlinking this folder into your skills folder, not by copying it: its runner loads
+box-audit's `judge.py` from the checkout it sits in, and the `../box-audit/` paths here resolve
+through the link on POSIX only. On Windows, do not install it: have the agent read this
+`SKILL.md` in the checkout, and run each script by path from there, as in
+`python <kit>/box/skills/skill-eval/scripts/skill_eval.py`, where `<kit>` is the checkout.
+
 ## What one run does
 
 1. For each task and each repeat (default 3), one session with A installed and one with B, in
@@ -187,7 +193,7 @@ with `--keep-env`. Nothing in the harness assumes a code host.
 - Isolation covers startup context, not the filesystem: a session could read a path it is told
   about, and its shell commands run as you. Keep tasks synthetic and allow only the tools a task
   needs.
-- Needs `../box-audit/` beside it (the isolation code).
+- Needs `../box-audit/` beside it (the isolation code), so install it as a symlink (above).
 - The trigger check counts the events the profile names. A CLI that reads the skill some other
   way is counted as not picking it.
 - The harness reports. It never edits a skill or opens a PR.
