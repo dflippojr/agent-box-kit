@@ -68,6 +68,10 @@ import tempfile
 import time
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # card.py sits in the kit, which may be the audited checkout
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import card  # noqa: E402
+
 SKILL = Path(__file__).resolve().parent.parent
 STANDARD = SKILL.parent.parent / "STANDARD.md"
 ALLOW_ENV = ("PATH", "PATHEXT", "SYSTEMROOT", "SystemRoot", "WINDIR", "COMSPEC", "SystemDrive",
@@ -91,6 +95,7 @@ def prepare(evidence, out, date=None, judge_line=None, feedback=None, standard=S
              "- Date for the card title: %s" % (date or "today's date"),
              "- Text for the `- Judge:` line: %s" % (
                  judge_line or "isolated: fresh session, empty home, evidence bundle only"),
+             "- Value for the `- Standard:` line: %s" % card.standard_hash(standard=standard),
              "", "---", "", (SKILL / "card-format.md").read_text(encoding="utf-8"),
              "", "---", "", Path(standard).read_text(encoding="utf-8"),
              "", "---", "", Path(evidence).read_text(encoding="utf-8")]

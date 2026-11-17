@@ -19,7 +19,8 @@ Work like this:
 5. Propose issues that would close the gaps, most valuable first, at most three per dimension.
    Each must be small enough for one worker and one PR, with checkable Want items.
 6. Compute the overall score with the rule and write the row. The `- Proven:` line is computed
-   from the row by a script after you finish; you may leave it out.
+   from the row by a script after you finish; you may leave it out. Copy the `- Standard:` value
+   given at the end of these instructions; never make one up.
 
 Write the card in exactly the format given. Output only the card, starting with its `# Box
 audit:` line: no preamble, no code fence around it. If you were given problems from an earlier

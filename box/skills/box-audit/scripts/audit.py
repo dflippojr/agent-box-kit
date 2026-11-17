@@ -34,7 +34,8 @@ Usage:
                   that starts its own isolated judge. Then check its card with `card.py check`.
 
 The card's `- Proven:` line is computed from its score row by `card.py`, replacing any the judge
-wrote. If the card fails `card.py check`, the judge gets one more attempt with the problems
+wrote, and its `- Standard:` line is this kit's Standard value (`card.py standard`): a hash of
+the rubric that scored it. The bundle's prompt gives the judge that value too. If the card fails `card.py check`, the judge gets one more attempt with the problems
 listed.
 
 Refusals. Nothing inside the audited checkout is written, and a REPO below its top stands for
@@ -192,6 +193,7 @@ def main(argv=None):
             print("audit: %s; it must be outside" % problem, file=sys.stderr)
             return 2
         out_dir.mkdir(parents=True, exist_ok=True)
+        standard = card.standard_hash()
         feedback, problems, text = None, None, ""
         for attempt in (1, 2):
             bundle = tmp / ("bundle%d" % attempt)
@@ -201,7 +203,8 @@ def main(argv=None):
                              str(raw), args.work_root or tmp_root, protect=repo)
             if code:
                 return code
-            text = card.stamp_proven(clean(raw.read_text(encoding="utf-8")))
+            text = card.stamp_standard(card.stamp_proven(clean(raw.read_text(encoding="utf-8"))),
+                                       standard)
             problems = card.check(text)
             if not problems:
                 break
