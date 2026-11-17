@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+pytest_plugins = ["pytester"]
+
 SCRIPTS = Path(__file__).resolve().parent.parent / "agent-ready" / "scripts"
 
 
