@@ -388,7 +388,7 @@ def strip_shell_comment(command):
 
 
 # Job ids and event names are letters, digits, `-` and `_`, so a quoted key needs no escapes.
-YAML_KEY = re.compile(r"(?:\"([\w-]+)\"|'([\w-]+)'|([\w-]+))\s*:(?:\s|$)")
+YAML_KEY = re.compile(r"^(?:\"([\w-]+)\"|'([\w-]+)'|([\w-]+))\s*:(?:\s|$)")
 
 
 def yaml_key(line):
