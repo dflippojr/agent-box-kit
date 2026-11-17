@@ -387,17 +387,14 @@ def strip_shell_comment(command):
     return command
 
 
-YAML_KEY = re.compile(r"(?:\"((?:[^\"\\]|\\.)*)\"|'((?:[^']|'')*)'|([\w-]+))\s*:(?:\s|$)")
+# Job ids and event names are letters, digits, `-` and `_`, so a quoted key needs no escapes.
+YAML_KEY = re.compile(r"(?:\"([\w-]+)\"|'([\w-]+)'|([\w-]+))\s*:(?:\s|$)")
 
 
 def yaml_key(line):
     """The key of a stripped `key:` mapping line, plain or quoted, or None."""
     m = YAML_KEY.match(line)
-    if not m:
-        return None
-    if m.group(1) is not None:
-        return re.sub(r"\\([\"\\])", r"\1", m.group(1))
-    return m.group(2).replace("''", "'") if m.group(2) is not None else m.group(3)
+    return next((g for g in m.groups() if g is not None), None) if m else None
 
 
 def flow_names(value):
@@ -678,7 +675,7 @@ def protection(ctx):
     ready = r"(^|/)ready(?:[-_.]\w+(?:[-.]\w+)*)?$|(^|/)ready\.\w+$"
     # Only where a gate lives, as local_gate reads it: the top level, scripts/, bin/ or tools/.
     items, data = [], {"ready_scripts": [f for f in ctx["files"] if re.search(ready, f) and (
-        "/" not in f or f.count("/") == 1 and f.startswith(("scripts/", "bin/", "tools/")))]}
+        "/" not in f or (f.count("/") == 1 and f.startswith(("scripts/", "bin/", "tools/"))))]}
     for f in data["ready_scripts"]:
         items.append(item("ready script present: %s" % f, f))
     for f in ctx["files"]:
