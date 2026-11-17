@@ -1560,13 +1560,20 @@ def test_standard_changes_when_and_only_when_a_rubric_file_changes(tmp_path):
     assert base == card.standard_hash()  # a copied kit gives the checkout's value
     for rel in card.RUBRIC:
         path = kit / rel
-        original = path.read_bytes()
+        original = path.read_bytes()  # CRLF already, in a Windows checkout of the `.md` files
+        lf = original.replace(b"\r\n", b"\n")
         path.write_bytes(original + b"\n")
         assert card.standard_hash(kit) != base, rel
-        path.write_bytes(original.replace(b"\n", b"\r\n"))  # a Windows checkout of the same text
+        path.write_bytes(lf.replace(b"\n", b"\r\n"))  # the same text with CRLF line endings
+        assert card.standard_hash(kit) == base, rel
+        path.write_bytes(lf)
         assert card.standard_hash(kit) == base, rel
         path.write_bytes(original)
         assert card.standard_hash(kit) == base, rel
+    for rel in card.RUBRIC:  # the whole rubric checked out with CRLF line endings
+        path = kit / rel
+        path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    assert card.standard_hash(kit) == base
     for rel in ("skills/box-audit/scripts/card.py", "skills/box-audit/scripts/judge.py",
                 "skills/box-audit/scripts/audit.py", "skills/box-audit/SKILL.md",
                 "skills/box-crosspollinate/scripts/compare.py", "ratchet/README.md",
