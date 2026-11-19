@@ -1467,3 +1467,19 @@ def test_label_still_ends_at_the_first_colon(item, end):
 ])
 def test_ref_still_finds_the_same_references(text, found):
     assert [m.groups() for m in selector.REF.finditer(text)] == found
+
+
+def test_a_fenced_proof_section_is_not_the_proof():
+    """A `## Proof` inside fenced code is an example, not the section (issue #36: handoff_check
+    reads sections with box/lib's fence-aware md.py, as issue_lint does). A body whose only
+    complete proof is fenced has no proof; a real one after a fenced example is read."""
+    good = fixture("pr_cases.json")["base"]["repos/owner/app/pulls/12"]["body"]
+    proof = good[good.index("## Proof"):]
+    fenced = "The shape the README wants:\n\n```markdown\n%s\n```\n" % proof.rstrip()
+    assert handoff.proof_problems(fenced) == ["no '## Proof' section"]
+    for fence in ("~~~", "````"):
+        example = fenced.replace("```", fence)
+        assert handoff.proof_problems(example) == ["no '## Proof' section"], fence
+    assert handoff.proof_problems(fenced + "\n" + good) == []
+    sub = good.replace("### Gate changes", "```\n### Gate changes\n```")
+    assert "no '### Gate changes' section under '## Proof'" in handoff.proof_problems(sub)
