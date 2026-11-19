@@ -27,7 +27,15 @@ FENCE_LIKE = re.compile(r"^[\s>]*(?:(?:[-*+]|\d{1,9}[.)])\s[\s>]*)*(?:`{3}|~{3})
 # An HTML block's first line. A comment that closes on its own line, such as a tool's marker,
 # hides nothing: CommonMark ends that HTML block on the same line.
 HTML = re.compile(r"^ {0,3}<(?:!--|[!?]|/?[A-Za-z][A-Za-z0-9-]*(?:[ \t/>]|$))")
+# One line and its ending, in a single linear pass: text then an optional ending, or a bare ending.
+LINE = re.compile(r"[^\r\n]+(?:\r\n|\r|\n)?|\r\n|\r|\n")
 ONE_LINE_COMMENT = re.compile(r"^ {0,3}<!--(?:(?!-->).)*-->[ \t]*$")
+
+
+def raw_lines(body):
+    """body's lines with their endings. A line ends only at LF, CR or CRLF, as on a host, not at
+    the other separators str.splitlines() knows."""
+    return LINE.findall(body)
 
 
 def lines(body):
@@ -35,7 +43,7 @@ def lines(body):
     closes or sits in a fence. `problem`: why a line that looks like a fence is not one the lint
     reads exactly; such a line leaves the fence as it was."""
     fence, pos = None, 0
-    for n, raw in enumerate(re.findall(r"(?:[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$)", body), 1):
+    for n, raw in enumerate(raw_lines(body), 1):
         line, problem = raw.rstrip("\r\n"), None
         f = FENCE.match(line)
         if FENCE_LIKE.match(line):
