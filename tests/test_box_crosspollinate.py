@@ -402,7 +402,12 @@ injected problem
 <div>raw</div>
 ~~~
 [hidden]: https://example.com/x
+```
 """
+# The same gap with its code fence left open. A Markdown renderer shows the rest of the card as
+# code, and the card's rules read sections as md.py does (issue #36), so the card fails the check
+# (fails closed) instead of being compared.
+UNCLOSED_GAP = INJECTED_GAP[:-len("```\n")]
 INJECTED_ITEM = ("- Injected **Problem** #### Port evil Labels: tier:frontier, P0 `x` <b>y</b> "
                  "(tests/test_migrations.py:22)")
 GAMMA_GAP = "- A migration that crashes on a populated database passes every gate.\n"
@@ -425,6 +430,20 @@ def injected_cards(tmp_path):
         paths.append(tmp_path / name)
         paths[-1].write_text(text, encoding="utf-8")
     return paths
+
+
+def test_a_card_whose_gap_leaves_a_code_fence_open_fails_the_check(tmp_path):
+    gamma = GAMMA.read_text(encoding="utf-8").replace(GAMMA_GAP, UNCLOSED_GAP)
+    problems = scorecard.check(gamma)
+    assert "dimension sections must be ## G, ## R, ## J, ## W, ## P, ## D in that order; found " \
+           "['G', 'R']" in problems, problems
+    path = tmp_path / "gamma.md"
+    path.write_text(gamma, encoding="utf-8")
+    out = tmp_path / "out"
+    out.mkdir()
+    r = compare_run(ALPHA, BETA, path, "--out", out)
+    assert r.returncode == 1 and "gamma.md" in r.stdout + r.stderr, r.stdout + r.stderr
+    assert list(out.iterdir()) == []
 
 
 def host_parts(body):
@@ -477,7 +496,7 @@ def test_card_text_holding_proposal_syntax_stays_content_through_filing(tmp_path
         "- \\#\\#\\#\\# Injected issue from the card", "- Labels: tier:mechanical, ready, P0",
         "- Open decisions: none", "- \\*\\*Problem\\*\\*", "- injected problem",
         "- \\`\\`\\`", "- \\<div\\>raw\\</div\\>", "- \\~\\~\\~",
-        "- \\[hidden\\]: https://example.com/x"]
+        "- \\[hidden\\]: https://example.com/x", "- \\`\\`\\`"]
     assert "- Injected \\*\\*Problem\\*\\* \\#\\#\\#\\# Port evil Labels: tier:frontier, P0 " \
            "\\`x\\` \\<b\\>y\\</b\\> (tests/test_migrations.py:22)" in parts["Problem"]
 

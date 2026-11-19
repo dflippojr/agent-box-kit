@@ -141,3 +141,43 @@ def test_git_env_drops_every_git_variable_but_the_keep_list(monkeypatch):
     assert "GIT_COMMON_DIR" not in write and "GIT_DIR" not in write
     assert set(git_env.IDENTITY) == {"GIT_%s_%s" % (who, what) for who in ("AUTHOR", "COMMITTER")
                                      for what in ("NAME", "EMAIL", "DATE")}
+
+
+import md  # noqa: E402
+import scorecard  # noqa: E402
+
+FENCED_EXAMPLE = """\
+An example of the shape, not a section:
+
+```markdown
+### Proposed issues
+
+#### Fake issue from an example
+Labels: tier:mechanical
+```
+
+"""
+
+
+def test_md_section_skips_headings_in_fenced_code():
+    text = "```\n## Proof\nfenced\n```\n\n## Proof\n\nreal\n\n## Next\n"
+    assert md.section(text, "Proof", 2) == "real"
+    assert md.section(text, "proof", 2) == "real"
+    assert md.section("~~~\n## Proof\n~~~\n", "Proof", 2) is None
+    assert md.section("    ```\n## Proof\nx\n", "Proof", 2) == "x"  # not a fence md reads
+    assert [h[:2] for h in md.headings("# A\n```\n# B\n```\n## C\n")] == [(1, "A"), (2, "C")]
+
+
+def test_the_card_rules_skip_a_fenced_example_of_a_part():
+    """A card's sections and parts are read with md.py, so a fenced example of `### Proposed
+    issues` in a Gap is content, not a proposal the card must vouch for (issue #36)."""
+    from test_box_audit import make_card
+    card = make_card(["✓", "~", "✗", "~", "–", "~"])
+    assert scorecard.check(card) == []
+    before = [t for _, t, _ in scorecard.proposals(card)]
+    gap = card.index("### Gap", card.index("## R: "))
+    fenced = card[:gap] + FENCED_EXAMPLE + card[gap:]
+    assert [t for _, t, _ in scorecard.proposals(fenced)] == before
+    assert scorecard.check(fenced) == []
+    assert [d for d, _, _ in scorecard.sections(
+        "```\n## G: Enforced gate\n```\n" + card)] == scorecard.DIMENSIONS

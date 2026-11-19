@@ -2,11 +2,13 @@
 hash, and the card and issue-shape checks. Stdlib only; Python 3.8+. Not a script: box-audit's
 card.py (the CLI, whose docstring states the rules), audit.py, judge.py and file_issues.py,
 box-crosspollinate's compare.py and queue-fill's issue_lint rules import it from box/lib
-(issue #36).
+(issue #36). Sections and parts are read with md.py, outside fenced code.
 """
 import hashlib
 import re
 from pathlib import Path
+
+import md
 
 DIMENSIONS = ["G", "R", "J", "W", "P", "D"]
 NAMES = {"G": "Enforced gate", "R": "Real-thing tests", "J": "Outside judge",
@@ -108,12 +110,23 @@ def card_standard(text):
     return m.group(1).strip() if m else None
 
 
+DIMENSION_HEADING = re.compile(r"([A-Z]): (.*)$")
+
+
 def sections(text):
-    """Map dimension letter to its `## X: Name` section text, in file order."""
+    """(letter, name, text) for each `## X: Name` section outside fenced code, in file order. A
+    section runs to the next heading of level 1 or 2 (md.headings)."""
     found = []
-    for m in re.finditer(r"^## ([A-Z]): (.*?)$(.*?)(?=^## |\Z)", text, re.M | re.S):
-        found.append((m.group(1), m.group(2).strip(), m.group(3)))
+    for level, title, _, body in md.headings(text):
+        m = DIMENSION_HEADING.match(title) if level == 2 else None
+        if m:
+            found.append((m.group(1), m.group(2).strip(), body))
     return found
+
+
+def subsections(body, level):
+    """(title, text) for each heading of `level` in body outside fenced code, in order."""
+    return [(title, text) for found, title, _, text in md.headings(body) if found == level]
 
 
 def listed(body, label):
@@ -128,17 +141,16 @@ def listed(body, label):
 
 
 def part(body, heading):
-    m = re.search(r"^### %s\s*$(.*?)(?=^### |\Z)" % re.escape(heading), body, re.M | re.S)
-    return m.group(1).strip() if m else None
+    """The text under the first `### heading` in body outside fenced code, or None."""
+    return next((text for title, text in subsections(body, 3) if title == heading), None)
 
 
 def proposals(text):
     """(dimension, title, body) for every proposed issue under any mark. Filing reads this same
     list, so whatever it files has passed check_issue and the one-title rule."""
     for dim, _, body in sections(text):
-        block = part(body, "Proposed issues") or ""
-        for title, ibody in re.findall(r"^#### (.+?)\s*$(.*?)(?=^#### |\Z)", block, re.M | re.S):
-            yield dim, title.strip(), ibody
+        for title, ibody in subsections(part(body, "Proposed issues") or "", 4):
+            yield dim, title, ibody
 
 
 def check_labels(where, labels, open_, known=TIERS | REVIEWS | OTHER_LABELS):

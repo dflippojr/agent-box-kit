@@ -66,6 +66,7 @@ from urllib.parse import quote  # noqa: E402
 
 import gh_read  # noqa: E402
 from git_env import git_env  # noqa: E402
+from md import section  # noqa: E402  fence-aware: a fenced `## Proof` example is not the section
 
 DEFAULT_OWNER_LABELS = "gate-change-approved,findings-accepted"
 DEFAULT_ACCEPT = "findings-accepted"
@@ -98,16 +99,6 @@ class UsageError(Exception):
 
 def strip_comments(text):
     return re.sub(r"<!--.*?-->", "", (text or "").replace("\r\n", "\n"), flags=re.S)
-
-
-def section(text, heading, level):
-    """The text under a `heading` of `level` hashes, up to the next heading of that level or
-    higher, or None when the heading is absent."""
-    m = re.search(r"^%s[ \t]+%s[ \t]*$" % ("#" * level, re.escape(heading)), text, re.M | re.I)
-    if not m:
-        return None
-    end = re.search(r"^#{1,%d}[ \t]" % level, text[m.end():], re.M)
-    return text[m.end():m.end() + end.start()] if end else text[m.end():]
 
 
 def cells(line):
