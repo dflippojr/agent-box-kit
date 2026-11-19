@@ -35,7 +35,7 @@ def lines(body):
     closes or sits in a fence. `problem`: why a line that looks like a fence is not one the lint
     reads exactly; such a line leaves the fence as it was."""
     fence, pos = None, 0
-    for n, raw in enumerate(re.findall(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$", body), 1):
+    for n, raw in enumerate(re.findall(r"(?:[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$)", body), 1):
         line, problem = raw.rstrip("\r\n"), None
         f = FENCE.match(line)
         if FENCE_LIKE.match(line):
