@@ -1467,3 +1467,58 @@ def test_label_still_ends_at_the_first_colon(item, end):
 ])
 def test_ref_still_finds_the_same_references(text, found):
     assert [m.groups() for m in selector.REF.finditer(text)] == found
+
+
+def test_a_fenced_proof_section_is_not_the_proof():
+    """A `## Proof` inside fenced code is an example, not the section (issue #36: handoff_check
+    reads sections with box/lib's fence-aware md.py, as issue_lint does). A body whose only
+    complete proof is fenced has no proof; a real one after a fenced example is read."""
+    good = fixture("pr_cases.json")["base"]["repos/owner/app/pulls/12"]["body"]
+    proof = good[good.index("## Proof"):]
+    fenced = "The shape the README wants:\n\n```markdown\n%s\n```\n" % proof.rstrip()
+    assert handoff.proof_problems(fenced) == ["no '## Proof' section"]
+    for fence in ("~~~", "````"):
+        example = fenced.replace("```", fence)
+        assert handoff.proof_problems(example) == ["no '## Proof' section"], fence
+    assert handoff.proof_problems(fenced + "\n" + good) == []
+    sub = good.replace("### Gate changes", "```\n### Gate changes\n```")
+    assert "no '### Gate changes' section under '## Proof'" in handoff.proof_problems(sub)
+
+
+def proof_of(body):
+    return body[body.index("## Proof"):].rstrip()
+
+
+@pytest.mark.parametrize("wrap", [
+    lambda p: " ```\n%s\n ```\n" % p,
+    lambda p: "  ```\n%s\n  ```\n" % p,
+    lambda p: "   ~~~\n%s\n   ~~~\n" % p,
+    lambda p: "- item\n\n  ```\n%s\n  ```\n" % p,
+    lambda p: "> ```\n%s\n> ```\n" % p,
+    lambda p: "<pre>\n%s\n</pre>\n" % p,
+    lambda p: "<div>\n%s\n</div>\n" % p,
+], ids=["fence-1-space", "fence-2-spaces", "fence-3-spaces", "fence-in-list", "fence-in-quote",
+        "pre", "div"])
+def test_a_proof_the_host_renders_as_code_or_html_is_not_ready(wrap):
+    """handoff_check reads the proof the owner sees. A construct before the proof's end that it
+    does not read the way the host renders it (a fence that is not at column 0, an HTML block)
+    could hide the real proof, so it fails closed, naming the line."""
+    good = fixture("pr_cases.json")["base"]["repos/owner/app/pulls/12"]["body"]
+    found = handoff.proof_problems(wrap(proof_of(good)))
+    assert found and found[0].split(":")[0] in ("line 1", "line 3"), found
+    assert all(re.match(r"line \d+: ", p) and "move it below the proof" in p for p in found), found
+
+
+def test_an_unclosed_comment_hides_the_rest_of_the_body():
+    good = fixture("pr_cases.json")["base"]["repos/owner/app/pulls/12"]["body"]
+    assert handoff.proof_problems("<!--\n" + proof_of(good)) == ["no '## Proof' section"]
+    assert handoff.proof_problems(proof_of(good) + "\n\n<!-- left open\n") == []
+
+
+def test_html_and_odd_fences_after_the_proof_do_not_count():
+    """Markdown is read top down: nothing after the proof section changes how it renders."""
+    good = fixture("pr_cases.json")["base"]["repos/owner/app/pulls/12"]["body"]
+    after = "\n\n## Notes\n\n<details>\n<summary>log</summary>\n\n  ```\nx\n  ```\n</details>\n"
+    assert handoff.proof_problems(good + after) == []
+    closed = "<!--\nA template note.\n-->\n\n```\nfenced at column 0\n```\n\n"
+    assert handoff.proof_problems(closed + good) == []

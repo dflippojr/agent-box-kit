@@ -39,34 +39,31 @@ last round (a verdict; each is printed with the reason); 2 usage error, includin
 an unsupported stack; 3 git or I/O error, including a refused target.
 """
 import sys
-# Before any other import: importing box-audit's collectors must not write bytecode.
+# Before any other import: box/lib sits in the kit, which may be the repo being built.
 sys.dont_write_bytecode = True
 
+from pathlib import Path  # noqa: E402
+
+# box/lib, in the checkout this file sits in, holds the helpers box scripts share (issue #36).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+
 import argparse  # noqa: E402
-import importlib.util  # noqa: E402
+import json  # noqa: E402
 import os  # noqa: E402
 import re  # noqa: E402
 import subprocess  # noqa: E402
-from pathlib import Path  # noqa: E402
+
+import profiles  # noqa: E402
+from git_env import IDENTITY, git_env  # noqa: E402
+from paths import linked  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 SKILL = HERE.parent
 TEMPLATES = SKILL / "templates"
 BOX = SKILL.parent.parent
-sys.path.insert(0, str(BOX / "skills" / "box-audit" / "scripts"))
-
-import collect  # noqa: E402
-
-
-def load_by_path(name, path):
-    spec = importlib.util.spec_from_file_location(name, str(path))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-# The stdlib has its own `profile` module, so load box/profiles/profile.py by path.
-profiles = load_by_path("box_profile", BOX / "profiles" / "profile.py")
+# box-audit's collectors, run as a script (python -B, JSON on stdout) as the owner runs them: the
+# evidence is the auditor's own, and nothing of box-audit is imported.
+COLLECT = BOX / "skills" / "box-audit" / "scripts" / "collect.py"
 
 SUPPORTED = ["python"]
 STACK_MARKERS = {
@@ -101,16 +98,10 @@ class Failure(Exception):
 
 # ----- git ----------------------------------------------------------------------------------
 
-def git_env():
-    """The caller's environment without variables that point git at another repository."""
-    return {k: v for k, v in os.environ.items()
-            if k.upper() not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")}
-
-
 def git(repo, *args, check=True):
     try:
         p = subprocess.run(["git", "-C", str(repo)] + list(args), capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", env=git_env())
+                           encoding="utf-8", errors="replace", env=git_env(keep=IDENTITY))
     except OSError as exc:
         raise Failure(3, "cannot run git: %s" % exc)
     if check and p.returncode != 0:
@@ -121,6 +112,43 @@ def git(repo, *args, check=True):
 def tracked_changes(repo):
     return [l for l in (git(repo, "status", "--porcelain", "--untracked-files=no") or "")
             .splitlines() if l.strip()]
+
+
+def checkout_root(repo):
+    """The top of the checkout holding repo, resolved, or None outside one."""
+    top = git(repo, "rev-parse", "--show-toplevel", check=False)
+    return Path(top).resolve() if top else None
+
+
+def tracked_files(repo):
+    return sorted(f for f in (git(repo, "ls-files", "-z", check=False) or "").split("\0") if f)
+
+
+def read(repo, rel):
+    """Text of a file in REPO, or None if it is missing, unreadable or behind a link."""
+    if linked(repo, rel):
+        return None
+    try:
+        return (Path(repo) / rel).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def evidence(repo):
+    """box-audit's collector evidence for REPO, with no host."""
+    try:
+        p = subprocess.run([sys.executable, "-B", str(COLLECT), str(repo), "--no-remote"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise Failure(3, "cannot run box-audit's collect.py: %s" % exc)
+    try:
+        found = json.loads(p.stdout) if p.returncode == 0 else None
+    except ValueError:
+        found = None
+    if not isinstance(found, dict):
+        raise Failure(3, "box-audit's collect.py failed (exit %d): %s"
+                      % (p.returncode, p.stderr.strip()[-500:]))
+    return found
 
 
 # ----- inputs -------------------------------------------------------------------------------
@@ -242,7 +270,7 @@ def present(repo, profile, evidence):
     by_name = dict((c["name"], c) for c in evidence["collectors"])
     ci, proof = by_name["ci_config"]["data"], by_name["proof_rules"]["data"]
     workflows = ci["workflows"]
-    ready_text = "\n".join(collect.read(repo, f) or ""
+    ready_text = "\n".join(read(repo, f) or ""
                            for f in by_name["protection"]["data"]["ready_scripts"])
 
     def running(script):
@@ -256,7 +284,7 @@ def present(repo, profile, evidence):
 
     gh_gate = variant(profile, "required_checks") == "github"
     gh_checks = variant(profile, "tamper_guard_lint") == "github"
-    agents = collect.read(repo, "AGENTS.md") or ""
+    agents = read(repo, "AGENTS.md") or ""
     docs = set(proof.get("docs", []))
     out = {}
     if gh_gate:
@@ -301,7 +329,7 @@ def build(repo, items, found, vals):
             if rel in writes:
                 wrote = True
                 continue
-            if rel == "AGENTS.md" and path.is_file() and not collect.linked(repo, rel):
+            if rel == "AGENTS.md" and path.is_file() and not linked(repo, rel):
                 if git(repo, "ls-files", "--error-unmatch", "--", rel, check=False) is None:
                     stuck[key] = ("AGENTS.md is untracked or ignored; bootstrap does not commit "
                                   "it")
@@ -331,7 +359,7 @@ def check_targets(repo, rels):
     refused = []
     for rel in sorted(rels):
         path = repo / rel
-        if collect.linked(repo, rel):
+        if linked(repo, rel):
             refused.append("%s (a folder on the way to it is a link)" % rel)
             continue
         try:
@@ -440,15 +468,15 @@ def run(args):
     repo = Path(args.repo).resolve()
     if not repo.is_dir():
         raise Failure(2, "%s is not a directory" % args.repo)
-    if collect.checkout_root(repo) != repo:
+    if checkout_root(repo) != repo:
         raise Failure(2, "%s is not the top of a git checkout" % args.repo)
     if not 1 <= args.rounds <= MAX_ROUNDS:
         raise Failure(2, "--rounds must be 1 to %d" % MAX_ROUNDS)
     profile = resolve_profile(repo, args.profile)[0]
-    resolve_stack(args.stack, collect.tracked_files(repo))
+    resolve_stack(args.stack, tracked_files(repo))
     if not git(repo, "rev-parse", "--verify", "-q", "HEAD", check=False):
         raise Failure(3, "%s has no commits; commit the project first" % repo)
-    base = args.base or collect.default_branch(repo, None)[0]
+    base = args.base or evidence(repo)["default_branch"]
     base_commit = git(repo, "rev-parse", "--verify", "-q", "%s^{commit}" % base, check=False)
     if not base_commit:
         raise Failure(2, "default branch %r not found; pass --base" % base)
@@ -469,7 +497,7 @@ def run(args):
     vals = values(profile, base, repo.name, pr_template)
     stuck = {}
     for n in range(1, args.rounds + 1):
-        found = present(repo, profile, collect.collect(repo, no_remote=True))
+        found = present(repo, profile, evidence(repo))
         missing = [i for i in items if not found[i[0]][0]]
         if not missing and (not write_choice or profiles.chosen(repo)):
             print("Round %d: box-audit finds every item" % n)
@@ -488,7 +516,7 @@ def run(args):
         print("Round %d: missing %s; wrote %s; committed %s" % (
             n, ", ".join(i[0] for i in missing) or "nothing", ", ".join(written),
             git(repo, "rev-parse", "--short=12", "HEAD")))
-    found = present(repo, profile, collect.collect(repo, no_remote=True))
+    found = present(repo, profile, evidence(repo))
     if git(repo, "rev-parse", "%s^{commit}" % base) != base_commit:
         raise Failure(3, "the default branch %s moved during the run" % base)
 

@@ -1,6 +1,6 @@
 """Run one read-only gh command and decode its response. Stdlib only; Python 3.8+. Not a script:
-box-audit's collect.py and file_issues.py and orchestrate's select.py and handoff_check.py load this
-file by path.
+box-audit's collect.py, orchestrate's select.py and handoff_check.py, and box/lib's filing.py
+import it from box/lib (issue #36).
 Each keeps its own command, environment, endpoints and error verdicts.
 
 read(argv, env=None) runs the complete argv with a 60-second timeout and returns (body, error):

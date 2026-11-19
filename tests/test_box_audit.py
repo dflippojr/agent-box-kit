@@ -26,10 +26,13 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "box_audit"
 sys.path.insert(0, str(SCRIPTS))
 
 import audit  # noqa: E402
-import card  # noqa: E402
 import collect  # noqa: E402
 import file_issues  # noqa: E402
 import judge  # noqa: E402
+# box/lib, where the card's rules, the judge's isolation and filing live (issue #36). The scripts
+# above put it on sys.path.
+import isolation  # noqa: E402
+import scorecard  # noqa: E402
 
 MARKER = "BOX_AUDIT_TEST_INSTRUCTIONS.md"
 
@@ -1329,7 +1332,7 @@ def test_summarize_runs_flags_cancellations_reruns_and_flakes():
 # ----- card ----------------------------------------------------------------------------------
 
 def dimension(dim, mark, verified=True, issues=1, extra=""):
-    name = card.NAMES[dim]
+    name = scorecard.NAMES[dim]
     if mark == "–":
         return "## %s: %s\n\n**Mark:** –\n\n**Reason:** nothing deployed.\n%s" % (dim, name,
                                                                                    extra)
@@ -1381,8 +1384,8 @@ Other things.
 
 
 def make_card(marks, score=None, sections=None):
-    row = " · ".join("%s %s" % (d, m) for d, m in zip(card.DIMENSIONS, marks))
-    score = card.overall(marks) if score is None else score
+    row = " · ".join("%s %s" % (d, m) for d, m in zip(scorecard.DIMENSIONS, marks))
+    score = scorecard.overall(marks) if score is None else score
     head = textwrap.dedent("""\
         # Box audit: app (2026-10-19)
 
@@ -1397,7 +1400,7 @@ def make_card(marks, score=None, sections=None):
         It scores {score}.
 
         """).format(row=row, score=score)
-    body = sections or [dimension(d, m) for d, m in zip(card.DIMENSIONS, marks)]
+    body = sections or [dimension(d, m) for d, m in zip(scorecard.DIMENSIONS, marks)]
     return head + "\n".join(body)
 
 
@@ -1430,40 +1433,40 @@ def test_valid_card_passes(tmp_path):
 ])
 def test_card_problems_are_caught(mutate, problem):
     text = make_card(["✓", "~", "✗", "~", "–", "~"])
-    assert not card.check(text)
-    problems = card.check(mutate(text))
+    assert not scorecard.check(text)
+    problems = scorecard.check(mutate(text))
     assert any(problem in p for p in problems), problems
 
 
 def test_read_only_evidence_cannot_meet_the_bar():
     marks = ["✓", "~", "✗", "~", "–", "~"]
     sections = [dimension("G", "✓", verified=False)] + [
-        dimension(d, m) for d, m in zip(card.DIMENSIONS[1:], marks[1:])]
-    assert any("no verified evidence" in p for p in card.check(make_card(marks, sections=sections)))
+        dimension(d, m) for d, m in zip(scorecard.DIMENSIONS[1:], marks[1:])]
+    assert any("no verified evidence" in p for p in scorecard.check(make_card(marks, sections=sections)))
 
 
 def test_never_na_dimensions_and_missing_issues():
     marks = ["–", "~", "✗", "~", "–", "~"]
-    assert any("G is never n/a" in p for p in card.check(make_card(marks)))
+    assert any("G is never n/a" in p for p in scorecard.check(make_card(marks)))
     marks = ["✓", "~", "✗", "~", "–", "~"]
     sections = [dimension(d, m, issues=0 if d == "R" else 1) for d, m in
-                zip(card.DIMENSIONS, marks)]
+                zip(scorecard.DIMENSIONS, marks)]
     text = make_card(marks, sections=sections).replace("No issue: an external blocker.\n", "")
-    assert any("R: below ★ needs a proposed issue" in p for p in card.check(text))
+    assert any("R: below ★ needs a proposed issue" in p for p in scorecard.check(text))
 
 
 def test_nine_with_one_partial_needs_a_written_blocker():
     marks = ["✓", "~", "✓", "✓", "–", "✓"]
     plain = make_card(marks, score=9)
-    assert any("does not follow the rule" in p for p in card.check(plain))
+    assert any("does not follow the rule" in p for p in scorecard.check(plain))
     sections = [dimension(d, m, extra="\n**Blocker:** the runner hardware is not owned yet.\n"
-                          if d == "R" else "") for d, m in zip(card.DIMENSIONS, marks)]
-    assert not card.check(make_card(marks, score=9, sections=sections))
+                          if d == "R" else "") for d, m in zip(scorecard.DIMENSIONS, marks)]
+    assert not scorecard.check(make_card(marks, score=9, sections=sections))
 
 
 def test_overall_matches_the_standards_rule_for_every_row():
     for marks in itertools.product("✗~✓★–", repeat=6):
-        assert card.overall(list(marks)) == standard_overall(list(marks)), marks
+        assert scorecard.overall(list(marks)) == standard_overall(list(marks)), marks
 
 
 def test_score_command():
@@ -1475,18 +1478,18 @@ def test_score_command():
 
 def test_proven_mixes_every_mark():
     """✓ and ★ count 1, ~ 0.5, ✗ 0; n/a leaves the average (issue #19)."""
-    assert card.proven(["✓", "~", "✗", "★", "–", "~"]) == "6.0"  # 3 / 5
-    assert card.proven(["✓", "~", "✗", "~", "–", "~"]) == "5.0"  # 2.5 / 5
-    assert card.proven(["✓", "–", "~", "✗", "–", "★"]) == "6.3"  # 2.5 / 4, half rounded up
-    assert card.proven(["✗"] * 6) == "0.0"
-    assert card.proven(["★"] * 5 + ["–"]) == "10.0"
+    assert scorecard.proven(["✓", "~", "✗", "★", "–", "~"]) == "6.0"  # 3 / 5
+    assert scorecard.proven(["✓", "~", "✗", "~", "–", "~"]) == "5.0"  # 2.5 / 5
+    assert scorecard.proven(["✓", "–", "~", "✗", "–", "★"]) == "6.3"  # 2.5 / 4, half rounded up
+    assert scorecard.proven(["✗"] * 6) == "0.0"
+    assert scorecard.proven(["★"] * 5 + ["–"]) == "10.0"
 
 
 def test_proven_matches_the_standards_definition_for_every_row():
     for marks in itertools.product("✗~✓★–", repeat=6):
         if all(m == "–" for m in marks):
             continue
-        assert float(card.proven(list(marks))) == standard_proven(list(marks)), marks
+        assert float(scorecard.proven(list(marks))) == standard_proven(list(marks)), marks
 
 
 def test_upgrading_a_mark_never_lowers_proven():
@@ -1497,46 +1500,46 @@ def test_upgrading_a_mark_never_lowers_proven():
                 continue
             better = list(marks)
             better[i] = ladder[ladder.index(mark) + 1]
-            assert float(card.proven(better)) >= float(card.proven(list(marks))), marks
+            assert float(scorecard.proven(better)) >= float(scorecard.proven(list(marks))), marks
 
 
 def test_card_proven_line_is_checked_when_present():
     marks = ["✓", "~", "✗", "~", "–", "~"]
     text = make_card(marks)
-    assert not card.check(text)  # a card without the line, from a harness judge, still passes
-    stamped = card.stamp_proven(text)
-    assert "\n- Proven: 5.0\n" in stamped and not card.check(stamped)
-    assert card.stamp_proven(stamped) == stamped
+    assert not scorecard.check(text)  # a card without the line, from a harness judge, still passes
+    stamped = scorecard.stamp_proven(text)
+    assert "\n- Proven: 5.0\n" in stamped and not scorecard.check(stamped)
+    assert scorecard.stamp_proven(stamped) == stamped
     wrong = stamped.replace("- Proven: 5.0", "- Proven: 8.0")
-    assert any("Proven 8.0 does not follow" in p for p in card.check(wrong))
-    assert card.stamp_proven(wrong) == stamped  # the script's value replaces the judge's
+    assert any("Proven 8.0 does not follow" in p for p in scorecard.check(wrong))
+    assert scorecard.stamp_proven(wrong) == stamped  # the script's value replaces the judge's
 
 
 def test_card_standard_line_is_optional_and_checked_when_present():
     marks = ["✓", "~", "✗", "~", "–", "~"]
     old = make_card(marks)
-    assert card.card_standard(old) is None and not card.check(old)  # a card from before the line
-    new = card.stamp_standard(card.stamp_proven(old), "0123456789ab")
+    assert scorecard.card_standard(old) is None and not scorecard.check(old)  # a card from before the line
+    new = scorecard.stamp_standard(scorecard.stamp_proven(old), "0123456789ab")
     assert "\n- Proven: 5.0\n- Standard: 0123456789ab\n\n## Summary" in new
-    assert card.card_standard(new) == "0123456789ab" and not card.check(new)
-    assert card.stamp_standard(new, "0123456789ab") == new
+    assert scorecard.card_standard(new) == "0123456789ab" and not scorecard.check(new)
+    assert scorecard.stamp_standard(new, "0123456789ab") == new
     judged = new.replace("- Standard: 0123456789ab", "- Standard: made-up")
-    assert card.stamp_standard(judged, "0123456789ab") == new  # the script's value replaces it
-    no_proven = card.stamp_standard(old, "0123456789ab")
-    assert "→ 8`\n- Standard: 0123456789ab\n" in no_proven and not card.check(no_proven)
-    assert card.stamp_standard("no score here\n", "0123456789ab") == "no score here\n"
+    assert scorecard.stamp_standard(judged, "0123456789ab") == new  # the script's value replaces it
+    no_proven = scorecard.stamp_standard(old, "0123456789ab")
+    assert "→ 8`\n- Standard: 0123456789ab\n" in no_proven and not scorecard.check(no_proven)
+    assert scorecard.stamp_standard("no score here\n", "0123456789ab") == "no score here\n"
     for bad in ("0123456789AB", "0123456789a", "0123456789abc", "unknown", ""):
-        problems = card.check(new.replace("0123456789ab", bad))
+        problems = scorecard.check(new.replace("0123456789ab", bad))
         assert any("must be 12 lowercase hex digits" in p for p in problems), (bad, problems)
     twice = new.replace("- Standard: 0123456789ab", "- Standard: 0123456789ab\n- Standard: "
                         "0123456789ab")
-    assert "more than one `- Standard:` line" in card.check(twice)
+    assert "more than one `- Standard:` line" in scorecard.check(twice)
 
 
 def test_card_check_notes_an_unknown_standard_and_standard_prints_the_value(tmp_path):
     old, new = tmp_path / "old.md", tmp_path / "new.md"
     old.write_text(make_card(["✓", "~", "✗", "~", "–", "~"]), encoding="utf-8")
-    new.write_text(card.stamp_standard(old.read_text(encoding="utf-8"), card.standard_hash()),
+    new.write_text(scorecard.stamp_standard(old.read_text(encoding="utf-8"), scorecard.standard_hash()),
                    encoding="utf-8")
     r = script("card.py", "check", old)
     assert r.returncode == 0 and r.stdout.strip() == "CARD_OK"
@@ -1544,7 +1547,7 @@ def test_card_check_notes_an_unknown_standard_and_standard_prints_the_value(tmp_
     r = script("card.py", "check", new)
     assert r.returncode == 0 and r.stdout.strip() == "CARD_OK" and r.stderr == ""
     r = script("card.py", "standard")
-    assert r.returncode == 0 and r.stdout.strip() == card.standard_hash()
+    assert r.returncode == 0 and r.stdout.strip() == scorecard.standard_hash()
     assert re.match(r"^[0-9a-f]{12}$", r.stdout.strip())
 
 
@@ -1556,41 +1559,41 @@ def kit_copy(tmp_path):
 
 def test_standard_changes_when_and_only_when_a_rubric_file_changes(tmp_path):
     kit = kit_copy(tmp_path)
-    base = card.standard_hash(kit)
-    assert base == card.standard_hash()  # a copied kit gives the checkout's value
-    for rel in card.RUBRIC:
+    base = scorecard.standard_hash(kit)
+    assert base == scorecard.standard_hash()  # a copied kit gives the checkout's value
+    for rel in scorecard.RUBRIC:
         path = kit / rel
         original = path.read_bytes()  # CRLF already, in a Windows checkout of the `.md` files
         lf = original.replace(b"\r\n", b"\n")
         path.write_bytes(original + b"\n")
-        assert card.standard_hash(kit) != base, rel
+        assert scorecard.standard_hash(kit) != base, rel
         path.write_bytes(lf.replace(b"\n", b"\r\n"))  # the same text with CRLF line endings
-        assert card.standard_hash(kit) == base, rel
+        assert scorecard.standard_hash(kit) == base, rel
         path.write_bytes(lf)
-        assert card.standard_hash(kit) == base, rel
+        assert scorecard.standard_hash(kit) == base, rel
         path.write_bytes(original)
-        assert card.standard_hash(kit) == base, rel
-    for rel in card.RUBRIC:  # the whole rubric checked out with CRLF line endings
+        assert scorecard.standard_hash(kit) == base, rel
+    for rel in scorecard.RUBRIC:  # the whole rubric checked out with CRLF line endings
         path = kit / rel
         path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
-    assert card.standard_hash(kit) == base
+    assert scorecard.standard_hash(kit) == base
     for rel in ("skills/box-audit/scripts/card.py", "skills/box-audit/scripts/judge.py",
                 "skills/box-audit/scripts/audit.py", "skills/box-audit/SKILL.md",
                 "skills/box-crosspollinate/scripts/compare.py", "ratchet/README.md",
                 "README.md"):
         (kit / rel).write_bytes((kit / rel).read_bytes() + b"\n# changed\n")
-        assert card.standard_hash(kit) == base, rel
+        assert scorecard.standard_hash(kit) == base, rel
 
 
 def test_standard_frames_each_file_so_moved_text_still_changes_it(tmp_path):
     kit = kit_copy(tmp_path)
-    base = card.standard_hash(kit)
+    base = scorecard.standard_hash(kit)
     prompt = kit / "skills" / "box-audit" / "judge-prompt.md"
     fmt = kit / "skills" / "box-audit" / "card-format.md"
     text = prompt.read_bytes()
     prompt.write_bytes(text[:-1])
     fmt.write_bytes(text[-1:] + fmt.read_bytes())  # the same bytes, one moved across the seam
-    assert card.standard_hash(kit) != base
+    assert scorecard.standard_hash(kit) != base
 
 
 def test_prepare_hashes_the_standard_it_inlines(tmp_path):
@@ -1600,12 +1603,12 @@ def test_prepare_hashes_the_standard_it_inlines(tmp_path):
     other.write_text((ROOT / "box" / "STANDARD.md").read_text(encoding="utf-8") + "\nNew rule.\n",
                      encoding="utf-8")
     text = judge.prepare(ev, tmp_path / "b", standard=other).read_text(encoding="utf-8")
-    value = card.standard_hash(standard_text=other.read_text(encoding="utf-8"))
+    value = scorecard.standard_hash(standard_text=other.read_text(encoding="utf-8"))
     assert "- Value for the `- Standard:` line: %s" % value in text
-    assert value != card.standard_hash()
-    same = card.standard_hash(standard_text=(ROOT / "box" / "STANDARD.md").read_text(
+    assert value != scorecard.standard_hash()
+    same = scorecard.standard_hash(standard_text=(ROOT / "box" / "STANDARD.md").read_text(
         encoding="utf-8"))
-    assert same == card.standard_hash()  # the text read and the file hash alike
+    assert same == scorecard.standard_hash()  # the text read and the file hash alike
 
 
 def test_proven_command():
@@ -1661,7 +1664,7 @@ def owner(tmp_path, monkeypatch):
     monkeypatch.setenv("JUDGE_API_KEY", "k")
     # Only the test's marker counts as an instruction file, so the real folders above the
     # temp dir on a developer machine do not decide the outcome.
-    monkeypatch.setattr(judge, "INSTRUCTION_ENTRIES", (MARKER,))
+    monkeypatch.setattr(isolation, "INSTRUCTION_ENTRIES", (MARKER,))
     root = tmp_path / "work-root"
     root.mkdir()
     cli = tmp_path / "cli" / "fake_cli.py"
@@ -1698,7 +1701,7 @@ def test_work_root_with_instruction_files_above_it_is_refused(owner, capfd):
     code = judge.run(owner["bundle"], [sys.executable, str(owner["cli"])],
                      work_root=str(nested))
     assert code == 2 and "unsafe --work-root" in capfd.readouterr().err
-    assert judge.unsafe_root(owner["home"] / ".agent") is not None  # inside the home
+    assert isolation.unsafe_root(owner["home"] / ".agent") is not None  # inside the home
 
 
 def test_copy_home_copies_logins_refuses_instructions_and_keeps_refreshes(owner, capfd):
@@ -1716,17 +1719,17 @@ def test_copy_home_copies_logins_refuses_instructions_and_keeps_refreshes(owner,
     assert "refusing --copy-home" in capfd.readouterr().err
 
 
-# outside_checkout: judge.sweep() deletes nothing when any folder above the work root holds
+# outside_checkout: isolation.sweep() deletes nothing when any folder above the work root holds
 # .git, by design, and it walks the folders in Python, so no git variable can fence it.
 @pytest.mark.outside_checkout
 def test_folders_left_by_a_killed_run_are_swept(owner):
     stale = owner["root"] / "box-audit-judge-killed"
     write(stale, "home/.agent/credentials.json", "{}")
-    write(stale, judge.OWN_MARK, "")
-    old = stale.stat().st_mtime - judge.STALE_SECONDS - 60
+    write(stale, isolation.OWN_MARK, "")
+    old = stale.stat().st_mtime - isolation.STALE_SECONDS - 60
     os.utime(str(stale), (old, old))
     fresh = owner["root"] / "box-audit-judge-running"
-    write(fresh, judge.OWN_MARK, "")
+    write(fresh, isolation.OWN_MARK, "")
     other = owner["root"] / "unrelated"
     other.mkdir()
     unmarked = owner["root"] / "box-audit-judge-not-ours"  # same name, no mark: not ours
@@ -1754,11 +1757,11 @@ def test_refreshed_login_keeps_the_owners_file_mode(tmp_path):
     original, copy = tmp_path / "credentials.json", tmp_path / "judge-copy.json"
     original.write_text("t1")
     os.chmod(str(original), 0o600)
-    before = judge.digest(original)
+    before = isolation.digest(original)
     copy.write_text("t2")
     old = os.umask(0o022)
     try:
-        judge.write_back(original, copy, before)
+        isolation.write_back(original, copy, before)
     finally:
         os.umask(old)
     assert original.read_text() == "t2"
@@ -1851,8 +1854,8 @@ def test_audit_report_writes_only_the_card(box_repo, owner, monkeypatch, capsys)
     cards = list(out.iterdir())
     assert [c.name for c in cards] == ["box-audit-repo-2026-10-19.md"]
     assert cards[0].read_text(encoding="utf-8") == good.strip().replace(
-        "→ 8`\n", "→ 8`\n- Proven: 5.0\n- Standard: %s\n" % card.standard_hash()) + "\n"
-    assert "- Value for the `- Standard:` line: %s" % card.standard_hash() in \
+        "→ 8`\n", "→ 8`\n- Proven: 5.0\n- Standard: %s\n" % scorecard.standard_hash()) + "\n"
+    assert "- Value for the `- Standard:` line: %s" % scorecard.standard_hash() in \
         (state / "prompt0.md").read_text(encoding="utf-8")
     prompt = (state / "prompt0.md").read_text(encoding="utf-8")
     assert "Host evidence: unavailable (skipped with --no-remote)" in prompt
@@ -1998,13 +2001,13 @@ def test_audit_bundle_refuses_files_hard_linked_into_the_repo(box_repo, tmp_path
 
 # Runs audit.py as a script would, except that only the test's marker counts as an instruction
 # file (as in the owner fixture): real folders above the temp dir on a developer machine would
-# otherwise refuse the work root. It patches judge as it is imported, so the import is audit's own.
+# otherwise refuse the work root. It patches box/lib's isolation as it is imported, so the import is audit's own.
 AUDIT_WITH_TEST_MARKER = """\
 import builtins, runpy, sys
 real_import = builtins.__import__
 def patched(name, *args, **kw):
     module = real_import(name, *args, **kw)
-    if name == "judge":
+    if name == "isolation":
         module.INSTRUCTION_ENTRIES = (%r,)
     return module
 builtins.__import__ = patched
@@ -2052,9 +2055,9 @@ def test_report_run_in_a_fresh_process_leaves_the_checkout_unchanged(repo, owner
     assert after == before
     assert (repo / "box-audit-app-2026-10-19.md").read_text(encoding="utf-8") == "an old card\n"
     # The copied kit's own rubric is hashed, and it is the same rubric as this checkout's.
-    assert card.standard_hash(repo / "box") == card.standard_hash()
+    assert scorecard.standard_hash(repo / "box") == scorecard.standard_hash()
     assert (out / "box-audit-app-2026-10-19.md").read_text(encoding="utf-8") == \
-        card.stamp_standard(card.stamp_proven(good.strip()), card.standard_hash()) + "\n"
+        scorecard.stamp_standard(scorecard.stamp_proven(good.strip()), scorecard.standard_hash()) + "\n"
 
 
 # Each case below is one way the caller's machine could make report mode change the checkout.
@@ -2125,8 +2128,8 @@ def test_sweep_never_removes_the_audited_checkout(owner, fresh_audit, monkeypatc
     saved = owner["root"] / "box-audit-judge-saved"
     repo = checkout(saved if case == "marked checkout" else saved / "project")
     if case != "unmarked ancestor":
-        write(saved, judge.OWN_MARK, "")
-    old = saved.stat().st_mtime - judge.STALE_SECONDS - 60
+        write(saved, isolation.OWN_MARK, "")
+    old = saved.stat().st_mtime - isolation.STALE_SECONDS - 60
     os.utime(str(saved), (old, old))
     cli, state = judge_script(owner["tmp"], [make_card(["✓", "~", "✗", "~", "–", "~"])])
     monkeypatch.setenv("JUDGE_STATE", str(state))
@@ -2145,7 +2148,8 @@ JUDGE_WITH_TEST_MARKER = """\
 import sys
 sys.path.insert(0, %r)
 import judge
-judge.INSTRUCTION_ENTRIES = (%r,)
+import isolation
+isolation.INSTRUCTION_ENTRIES = (%r,)
 sys.exit(judge.main())
 """ % (str(SCRIPTS), MARKER)
 
@@ -2158,7 +2162,7 @@ def test_no_entry_point_sweeps_away_a_checkout(repo, owner, fresh_audit, monkeyp
     no caller named: judge.py run and probe name none, and audit.py names only the one it audits
     (`repo` here). The sweep itself must leave it alone, whichever command starts the judge."""
     saved = owner["root"] / "box-audit-judge-saved"
-    write(saved, judge.OWN_MARK, "")
+    write(saved, isolation.OWN_MARK, "")
     if case == "marked ancestor":
         checkout(saved / "project")
     elif case == "marked checkout":
@@ -2166,7 +2170,7 @@ def test_no_entry_point_sweeps_away_a_checkout(repo, owner, fresh_audit, monkeyp
     else:
         write(saved, "home/.agent/credentials.json", "{}")
         checkout(owner["root"])  # the work root is a checkout, and the folder is tracked in it
-    old = saved.stat().st_mtime - judge.STALE_SECONDS - 60
+    old = saved.stat().st_mtime - isolation.STALE_SECONDS - 60
     os.utime(str(saved), (old, old))
     before = snapshot(saved)
     if entry == "audit.py":
@@ -2384,7 +2388,7 @@ def na_card(issue):
     marks = ["✓", "~", "✗", "~", "–", "~"]
     extra = "\n### Proposed issues\n\n" + issue
     return make_card(marks, sections=[dimension(d, m, extra=extra if d == "P" else "")
-                                      for d, m in zip(card.DIMENSIONS, marks)])
+                                      for d, m in zip(scorecard.DIMENSIONS, marks)])
 
 
 @pytest.mark.parametrize("issue, problem", [
@@ -2396,7 +2400,7 @@ def test_file_mode_checks_proposals_under_an_na_dimension(tmp_path, issue, probl
     """Filing reads proposals under every mark, so the check must too."""
     path = tmp_path / "card.md"
     path.write_text(na_card(issue), encoding="utf-8")
-    assert any(problem in p for p in card.check(na_card(issue)))
+    assert any(problem in p for p in scorecard.check(na_card(issue)))
     gh_cmd, env, created = fake_gh(tmp_path, "tier:standard,ready,needs-refinement,P1")
     r = script("file_issues.py", path, "--repo", "o/r", "--gh", gh_cmd, "--apply", env=env)
     assert r.returncode == 1 and "CARD_INVALID" in r.stdout and problem in r.stdout, r.stdout

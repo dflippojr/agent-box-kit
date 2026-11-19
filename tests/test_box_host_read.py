@@ -1,5 +1,5 @@
 """Characterization of the read-only gh adapters: collect.Host (box-audit), select.Host and
-handoff_check.Host (orchestrate), and file_issues.gh_json (box-audit's file mode). A stand-in gh,
+handoff_check.Host (orchestrate), and filing.gh_json (box-audit's file mode, from box/lib). A stand-in gh,
 driven by a sidecar file rather than the environment it is asked to report, writes the exact bytes
 and exit code of each case and logs its argv and environment. No host is contacted."""
 import importlib.util
@@ -30,6 +30,8 @@ collect = load(AUDIT / "collect.py", "host_read_collect")
 selector = load(ORCHESTRATE / "select.py", "host_read_select")
 handoff = load(ORCHESTRATE / "handoff_check.py", "host_read_handoff")
 file_issues = load(AUDIT / "file_issues.py", "host_read_file_issues")
+# box/lib's filing, which file_issues.py files through; the scripts above put box/lib on sys.path.
+import filing  # noqa: E402
 
 FAKE_GH = r'''
 import json, os, sys
@@ -214,24 +216,38 @@ def test_one_git_environment_loaded_from_this_checkout(module):
     assert module.git_env.__code__.co_filename == str(ROOT / "box" / "lib" / "git_env.py")
 
 
-@pytest.mark.parametrize("folder,name", [(AUDIT, "collect"), (ORCHESTRATE, "handoff_check")],
-                         ids=["collect", "handoff"])
-def test_loads_them_without_writing_bytecode(tmp_path, folder, name):
-    """Each script turns bytecode off before loading the helpers, so an inherited
+LIB_USERS = sorted(p for p in (ROOT / "box").rglob("*.py")
+                   if "templates" not in p.parts and p.parent.name != "lib"
+                   and '/ "lib"))' in p.read_text(encoding="utf-8"))
+
+
+def test_every_script_that_loads_box_lib_is_listed():
+    names = {p.name for p in LIB_USERS}
+    assert {"collect.py", "handoff_check.py", "select.py", "card.py", "judge.py", "audit.py",
+            "file_issues.py", "bootstrap.py", "compare.py", "hunt.py", "issue_lint.py",
+            "refine.py", "runner.py", "skill_eval.py", "profile.py"} <= names, names
+
+
+@pytest.mark.parametrize("path", LIB_USERS, ids=lambda p: p.name)
+def test_loads_them_without_writing_bytecode(tmp_path, path):
+    """Each script turns bytecode off before loading box/lib, so an inherited
     PYTHONPYCACHEPREFIX, which may point inside an audited checkout, gets nothing from it. A fresh
-    interpreter per script: this module's own imports already turned bytecode off here."""
+    interpreter runs each script as the owner does, but without -B."""
     prefix = tmp_path / "cache"
     env = dict(os.environ, PYTHONPYCACHEPREFIX=str(prefix))
     env.pop("PYTHONDONTWRITEBYTECODE", None)
-    r = subprocess.run([sys.executable, "-c",
-                        "import sys; sys.path.insert(0, sys.argv[1]); import " + name, str(folder)],
-                       cwd=str(tmp_path), env=env, capture_output=True, text=True)
-    assert r.returncode == 0, r.stderr
-    assert not list(prefix.rglob("gh_read*.pyc")) and not list(prefix.rglob("git_env*.pyc"))
+    r = subprocess.run([sys.executable, str(path), "--help"], cwd=str(tmp_path), env=env,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+    lib = {p.stem for p in (ROOT / "box" / "lib").glob("*.py")}
+    written = [f.name for f in prefix.rglob("*.pyc") if f.name.split(".")[0] in lib]
+    assert written == [], written
 
 
 def test_file_issues_loads_the_one_implementation():
-    assert Path(file_issues.gh_read.__file__) == ROOT / "box" / "lib" / "gh_read.py"
+    assert file_issues.file_all is filing.file_all
+    assert Path(filing.gh_read.__file__) == ROOT / "box" / "lib" / "gh_read.py"
 
 
 @pytest.mark.parametrize("out, err, code, expected", [
@@ -242,7 +258,7 @@ def test_file_issues_loads_the_one_implementation():
 def test_file_issues_read_responses_unchanged(out, err, code, expected, fake):
     gh, case, log = fake
     case(out, err, code)
-    assert file_issues.gh_json(gh, ["api", "repos/owner/app/x"]) == expected
+    assert filing.gh_json(gh, ["api", "repos/owner/app/x"]) == expected
     assert log()["args"] == ["api", "repos/owner/app/x"]
 
 
@@ -250,15 +266,15 @@ def test_file_issues_read_responses_unchanged(out, err, code, expected, fake):
 def test_file_issues_read_errors_match_gh_read(out, err, code, expected, fake):
     gh, case, _ = fake
     case(out, err, code)
-    assert file_issues.gh_json(gh, ["api", "repos/owner/app/x"]) == expected
+    assert filing.gh_json(gh, ["api", "repos/owner/app/x"]) == expected
 
 
 def test_file_issues_read_stops_at_the_shared_timeout(tmp_path, monkeypatch):
     slow = tmp_path / "slow_gh.py"
     slow.write_text("import time\ntime.sleep(20)\n", encoding="utf-8")
-    monkeypatch.setattr(file_issues.gh_read, "TIMEOUT", 1)
+    monkeypatch.setattr(filing.gh_read, "TIMEOUT", 1)
     started = time.monotonic()
-    body, error = file_issues.gh_json([sys.executable, str(slow)], ["api", "repos/owner/app/x"])
+    body, error = filing.gh_json([sys.executable, str(slow)], ["api", "repos/owner/app/x"])
     assert body is None and error.startswith("gh failed: ") and "timed out" in error, error
     assert time.monotonic() - started < 10
 

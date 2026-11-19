@@ -47,26 +47,33 @@ skill folder, budget, unsafe --work-root or --copy-home, --out inside a skill fo
 cap stopped the run early (partial report written). The verdict is in the report, not the exit
 code.
 """
-import argparse
-import datetime
-import hashlib
-import json
-import os
-import re
 import sys
-import tempfile
-import threading
-import time
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
+# Before any other import: box/lib gets no bytecode beside the helpers.
+sys.dont_write_bytecode = True
+
+from pathlib import Path  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+# box/lib, in the checkout this file sits in, holds the helpers box scripts share (issue #36).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+
+import argparse  # noqa: E402
+import datetime  # noqa: E402
+import hashlib  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+import tempfile  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+from concurrent.futures import ThreadPoolExecutor  # noqa: E402
+
 import blind  # noqa: E402
+import isolation as iso  # noqa: E402
 import report  # noqa: E402
 import runner  # noqa: E402
-
-iso = runner.iso
+from paths import inside  # noqa: E402
 DEFAULT_PROFILE = HERE.parent / "profiles" / "claude-code.json"
 DEFAULT_DIMENSIONS = {
     "execution": "the work is done, correct, and checked by something the output shows",
@@ -206,10 +213,6 @@ def read_rows(path):
     if not path.is_file():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
-
-
-def inside(path, root):
-    return iso.inside(path, root)
 
 
 def run(args):

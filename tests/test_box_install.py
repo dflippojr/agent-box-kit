@@ -75,9 +75,12 @@ def test_scripts_run_through_a_symlinked_install(skill, tmp_path):
     linked = tmp_path / skill.name
     os.symlink(str(skill), str(linked), target_is_directory=True)
     text = (skill / "SKILL.md").read_text(encoding="utf-8")
-    run = sorted(set(re.findall(r"python3? (?:-B )?scripts/(\w+\.py)", text)))
+    run = set(re.findall(r"python3? (?:-B )?scripts/(\w+\.py)", text))
     run = [name for name in run if (skill / "scripts" / name).exists()]
     assert run, skill.name
+    # Every script that loads box/lib, named in SKILL.md or not (issue #36).
+    run = sorted(set(run) | {p.name for p in (skill / "scripts").glob("*.py")
+                             if '/ "lib"))' in p.read_text(encoding="utf-8")})
     for name in run:
         proc = subprocess.run([sys.executable, "-B", str(linked / "scripts" / name), "--help"],
                               capture_output=True, text=True, encoding="utf-8",

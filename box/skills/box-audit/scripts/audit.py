@@ -73,10 +73,13 @@ from pathlib import Path  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+# box/lib, in the checkout this file sits in, holds the helpers box scripts share (issue #36).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
 
-import card  # noqa: E402
 import collect  # noqa: E402
 import judge  # noqa: E402
+import scorecard  # noqa: E402
+from paths import inside, startup_bytecode, unsafe_output, write_outside  # noqa: E402
 
 
 def clean(text):
@@ -97,14 +100,14 @@ def temp_dir(repo):
     or of the usual system temp dirs, that exists, is writable and is outside the checkout."""
     variables = ("TMPDIR", "TEMP", "TMP")
     for name in variables:
-        if os.environ.get(name) and collect.inside(Path(os.environ[name]), repo):
+        if os.environ.get(name) and inside(Path(os.environ[name]), repo):
             return None, "%s (%s) is inside the audited repo" % (name, os.environ[name])
     names = [os.environ[n] for n in variables if os.environ.get(n)]
     names += ([os.path.expandvars(p) for p in (r"%LOCALAPPDATA%\Temp", r"%SYSTEMROOT%\Temp")]
               if os.name == "nt" else ["/tmp", "/var/tmp", "/usr/tmp"])
     for folder in names:
         usable = os.path.isdir(folder) and os.access(folder, os.W_OK)
-        if usable and not collect.inside(Path(folder), repo):
+        if usable and not inside(Path(folder), repo):
             return os.path.abspath(folder), None
     return None, "no writable temp dir outside the audited repo; set TMPDIR to one"
 
@@ -137,8 +140,8 @@ def main(argv=None):
     if repo is None:
         print("audit: %s is not in a git checkout" % args.repo, file=sys.stderr)
         return 2
-    if collect.startup_bytecode(repo):
-        print("audit: %s" % collect.startup_bytecode(repo), file=sys.stderr)
+    if startup_bytecode(repo):
+        print("audit: %s" % startup_bytecode(repo), file=sys.stderr)
         return 2
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", args.date):
         print("audit: --date must be YYYY-MM-DD", file=sys.stderr)
@@ -146,14 +149,14 @@ def main(argv=None):
     if bool(command) == bool(args.bundle_only):
         print("audit: give either `-- JUDGE_COMMAND` or --bundle-only DIR", file=sys.stderr)
         return 2
-    if args.bundle_only and collect.inside(Path(args.bundle_only), repo):
+    if args.bundle_only and inside(Path(args.bundle_only), repo):
         print("audit: --bundle-only must be outside the audited repo", file=sys.stderr)
         return 2
-    if not args.bundle_only and collect.inside(Path(args.out), repo):
+    if not args.bundle_only and inside(Path(args.out), repo):
         print("audit: --out (default: the current directory) must be outside the audited repo",
               file=sys.stderr)
         return 2
-    if args.work_root and collect.inside(Path(args.work_root), repo):
+    if args.work_root and inside(Path(args.work_root), repo):
         print("audit: --work-root is inside the audited repo; it must be outside", file=sys.stderr)
         return 2
     tmp_root, problem = temp_dir(repo)
@@ -178,22 +181,22 @@ def main(argv=None):
         if args.bundle_only:
             out = Path(args.bundle_only)
             files = [evidence, judge.prepare(evidence, tmp / "bundle", args.date, args.judge_line)]
-            problems = [p for p in (collect.unsafe_output(out / f.name, repo) for f in files) if p]
+            problems = [p for p in (unsafe_output(out / f.name, repo) for f in files) if p]
             if problems:
                 print("audit: %s; it must be outside" % problems[0], file=sys.stderr)
                 return 2
             for f in files:
-                collect.write_outside(out / f.name, f.read_text(encoding="utf-8"), repo)
+                write_outside(out / f.name, f.read_text(encoding="utf-8"), repo)
             print(out / "prompt.md")
             return 0
         out_dir = Path(args.out)
         target = out_dir / ("box-audit-%s-%s.md" % (re.sub(r"[^\w.-]", "-", name), args.date))
-        problem = collect.unsafe_output(target, repo)  # the card is a link into the repo
+        problem = unsafe_output(target, repo)  # the card is a link into the repo
         if problem:
             print("audit: %s; it must be outside" % problem, file=sys.stderr)
             return 2
         out_dir.mkdir(parents=True, exist_ok=True)
-        standard = card.standard_hash()
+        standard = scorecard.standard_hash()
         feedback, problems, text = None, None, ""
         for attempt in (1, 2):
             bundle = tmp / ("bundle%d" % attempt)
@@ -203,16 +206,16 @@ def main(argv=None):
                              str(raw), args.work_root or tmp_root, protect=repo)
             if code:
                 return code
-            text = card.stamp_standard(card.stamp_proven(clean(raw.read_text(encoding="utf-8"))),
-                                       standard)
-            problems = card.check(text)
+            text = scorecard.stamp_standard(
+                scorecard.stamp_proven(clean(raw.read_text(encoding="utf-8"))), standard)
+            problems = scorecard.check(text)
             if not problems:
                 break
             feedback = tmp / "feedback.md"
             feedback.write_text("Problems found by card.py check:\n\n%s\n\nYour previous card:\n\n"
                                 "%s" % ("\n".join("- " + p for p in problems), text),
                                 encoding="utf-8")
-        collect.write_outside(target, text, repo)
+        write_outside(target, text, repo)
         sys.stdout.reconfigure(encoding="utf-8")
         print(target)
         if problems:

@@ -21,10 +21,12 @@ SCRIPT = PROFILES / "profile.py"
 STANDARD = ROOT / "box" / "STANDARD.md"
 SKILL = ROOT / "box" / "skills" / "box-audit"
 
-# Loaded by path: the stdlib has its own `profile` module, which `import profile` could find first.
-_spec = importlib.util.spec_from_file_location("box_profile", str(SCRIPT))
-box_profile = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(box_profile)
+# The CLI, loaded by path: the stdlib has its own `profile` module, which `import profile` could
+# find first. It puts box/lib on sys.path, where the loader it uses lives (issue #36).
+_spec = importlib.util.spec_from_file_location("box_profile_cli", str(SCRIPT))
+profile_cli = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(profile_cli)
+import profiles as box_profile  # noqa: E402
 
 # The table's "Need" column, row by row, and the profile key each row maps to.
 NEEDS = {
@@ -238,7 +240,7 @@ def test_invalid_profile_file_exits_2(tmp_path, monkeypatch):
     write(tmp_path, ".box-profile", "home\n")
     with pytest.raises(box_profile.ProfileError, match="ide"):
         box_profile.load(tmp_path)
-    assert box_profile.main([str(tmp_path)]) == 2
+    assert profile_cli.main([str(tmp_path)]) == 2
 
 
 def snapshot(root):
