@@ -48,34 +48,24 @@ import os  # noqa: E402
 
 # select.py sits in this folder and shares its name with the standard library module that
 # subprocess imports on POSIX. Drop this folder from the import path before importing subprocess.
+# box/lib, in the checkout this file sits in, holds the helpers box scripts share (issue #36).
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:] = [p for p in sys.path if os.path.abspath(p or os.curdir) != HERE]
 
+from pathlib import Path  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "lib"))
+
 import argparse  # noqa: E402
-import importlib.util  # noqa: E402
 import json  # noqa: E402
 import re  # noqa: E402
 import shlex  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
-from pathlib import Path  # noqa: E402
 from urllib.parse import quote  # noqa: E402
 
-# gh's response handling and git's environment, one implementation each for box-audit and
-# orchestrate, loaded by path from box/lib in the checkout this file sits in, now that this
-# folder is off the import path.
-BOX_LIB = Path(__file__).resolve().parents[2] / "lib"
-
-
-def load_lib(name):
-    spec = importlib.util.spec_from_file_location("box_" + name, str(BOX_LIB / (name + ".py")))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-gh_read = load_lib("gh_read")
-git_env = load_lib("git_env").git_env
+import gh_read  # noqa: E402
+from git_env import git_env  # noqa: E402
 
 DEFAULT_OWNER_LABELS = "gate-change-approved,findings-accepted"
 DEFAULT_ACCEPT = "findings-accepted"

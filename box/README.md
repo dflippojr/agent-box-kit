@@ -37,6 +37,10 @@ handoff around the repos.
   how a worker's PR is checked before the owner sees it: the label contract, selection, the worker
   brief and the handoff. `select.py` lists what can be dispatched now; `handoff_check.py` checks a
   PR against the host. No launcher and no model routing: sessions start in your own harness.
+- [`lib/`](lib/) is the only code the box's scripts share: path and link checks, git's
+  environment, Markdown sections, the score card's rules, the issue shape, the issue-folder reader,
+  filing, the judge's isolation and the profile loader. A script imports only from its own folder
+  and `lib/`, never from another skill or `orchestrate/`; `tests/test_box_boundary.py` holds that.
 
 Unlike `agent-ready/`, which is written for one agent in one session, the box covers the
 orchestration level too. It is host-agnostic: it names the GitHub mechanism where one exists, then

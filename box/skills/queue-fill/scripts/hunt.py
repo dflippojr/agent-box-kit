@@ -9,13 +9,13 @@ Usage:
   DRAFTS         A folder of findings, one `.md` file each: a header between `---` lines with
                  `title:` and `labels:` lines, then the issue body (format in ../SKILL.md).
   --repo, --folder, --apply, --only, --gh, --offline
-                 As for box-audit's file_issues.py, which does the filing: where to file (a
+                 As for box-audit's filing.py, which does the filing: where to file (a
                  GitHub repository, or an issue folder for a project with no hosted VCS), create
                  only with --apply, only these titles, the gh command, a dry run without the host.
-  --allow-label  Another label the findings may carry, as for issue_lint.py. Repeatable.
+  --allow-label  Another label the findings may carry, as for issue_shape.py. Repeatable.
 
 Every finding is checked before anything is filed, and one that fails stops the run:
-  - it passes issue_lint.py with its labels;
+  - it passes issue_shape.py with its labels;
   - its title starts with `Bug hunt: ` and its labels include `bug`, so box-audit's D collector
     counts it as a defect and its pass by day;
   - it carries no owner-only label (`gate-change-approved`, `findings-accepted`), even when
@@ -26,28 +26,35 @@ Every finding is checked before anything is filed, and one that fails stops the 
         CI-catchable: <yes or no>
   - every finding names the same `Found by:` line (one run files one dated pass) and a title
     no other finding has.
-Filing then follows file_issues.py: each label must exist on the repo, an open issue with the
+Filing then follows filing.py: each label must exist on the repo, an open issue with the
 same title is skipped, and nothing is created without --apply.
 
 Exit codes: 0 dry run printed or every finding filed (or skipped as a duplicate); 1 a finding
 fails its checks, a label is missing, or a create failed; 2 usage error (unreadable drafts, bad
 --repo or --folder, host unreachable, --offline with --apply or --folder).
 """
-import argparse
-import re
 import sys
-from pathlib import Path
+# Before any other import: box/lib gets no bytecode beside the helpers.
+sys.dont_write_bytecode = True
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
-sys.path.insert(0, str(HERE.parent.parent / "box-audit" / "scripts"))
+from pathlib import Path  # noqa: E402
 
-import collect  # noqa: E402
-import file_issues  # noqa: E402
-import issue_lint  # noqa: E402
+# box/lib, in the checkout this file sits in, holds the helpers box scripts share (issue #36).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
 
+import argparse  # noqa: E402
+import re  # noqa: E402
+
+import filing  # noqa: E402
+import issue_shape  # noqa: E402
+from md import headings  # noqa: E402
+
+# A change reference as box-audit's collect.py traces it (its CHANGE_REF). collect.py is part of
+# the Standard hash, so the rule stays there and is not imported; tests/test_queue_fill.py checks
+# that the two are equal.
+CHANGE_REF = r"(#\d+|https?://\S+/pull/\d+|\b(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b)"
 FOUND = re.compile(r"^Found by: bug hunt (\d{4}-\d{2}-\d{2}) at ([0-9a-f]{7,40})$")
-INTRODUCING = re.compile(r"^Introducing change: (unknown|%s)$" % collect.CHANGE_REF)
+INTRODUCING = re.compile(r"^Introducing change: (unknown|%s)$" % CHANGE_REF)
 CATCHABLE = re.compile(r"^CI-catchable: (yes|no)$")
 OWNER_ONLY = {"gate-change-approved", "findings-accepted"}
 
@@ -78,10 +85,10 @@ def read_draft(path):
             "body": m.group(2).strip() + "\n"}
 
 
-def check(finding, known=issue_lint.KNOWN):
+def check(finding, known=issue_shape.KNOWN):
     """Problems with one finding, and its `Found by:` line (None if it has none)."""
     where = finding["file"]
-    out = issue_lint.lint(finding["body"], finding["labels"], known, where)
+    out = issue_shape.lint(finding["body"], finding["labels"], known, where)
     if not finding["title"].startswith("Bug hunt: "):
         out.append("%s: the title must start with `Bug hunt: `" % where)
     owner_only = [l for l in finding["labels"] if l in OWNER_ONLY]
@@ -89,7 +96,7 @@ def check(finding, known=issue_lint.KNOWN):
         out.append("%s: %s only the owner applies" % (where, ", ".join(owner_only)))
     if "bug" not in finding["labels"]:
         out.append("%s: needs the bug label" % where)
-    problem = next((text for level, title, _, text in issue_lint.headings(finding["body"])
+    problem = next((text for level, title, _, text in headings(finding["body"])
                     if level == 2 and title == "Problem"), "")
     lines = [l.strip() for l in problem.splitlines() if l.strip()][:3] + ["", "", ""]
     found = FOUND.match(lines[0])
@@ -115,7 +122,7 @@ def main(argv=None):
     ap.add_argument("--allow-label", action="append", default=[])
     args = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")
-    error = file_issues.target_error(args.repo, args.folder, args.apply, args.offline)
+    error = filing.target_error(args.repo, args.folder, args.apply, args.offline)
     if error:
         print("hunt: %s" % error, file=sys.stderr)
         return 2
@@ -129,7 +136,7 @@ def main(argv=None):
         return 2
     problems, passes, titles = [], set(), {}
     for f in findings:
-        out, found = check(f, issue_lint.KNOWN | set(args.allow_label))
+        out, found = check(f, issue_shape.KNOWN | set(args.allow_label))
         problems += out
         passes.add(found)
         if f["title"] in titles:
@@ -148,7 +155,7 @@ def main(argv=None):
     if args.only and len(issues) != len(set(args.only)):
         print("hunt: --only names a title no finding has", file=sys.stderr)
         return 2
-    return file_issues.file_all(issues, args.repo, args.folder, args.apply, args.gh, args.offline,
+    return filing.file_all(issues, args.repo, args.folder, args.apply, args.gh, args.offline,
                                 "hunt")
 
 

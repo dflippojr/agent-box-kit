@@ -15,10 +15,10 @@ sessions and grade every check a script can grade. A judge sees only what both s
 shown as X and Y in random order, and is never told that versions exist. Scripts, not the judge,
 compute the verdict.
 
-Install it by symlinking this folder into your skills folder, not by copying it: its runner loads
-box-audit's `judge.py` from the checkout it sits in, and the `../box-audit/` paths here resolve
-through the link on POSIX only. On Windows, do not install it: have the agent read this
-`SKILL.md` in the checkout, and run each script by path from there, as in
+Install it by symlinking this folder into your skills folder, not by copying it: its runner imports
+box-audit's judge isolation from `box/lib` in the checkout it sits in, and the `../box-audit/`
+paths here resolve through the link on POSIX only. On Windows, do not install it: have the agent
+read this `SKILL.md` in the checkout, and run each script by path from there, as in
 `python <kit>/box/skills/skill-eval/scripts/skill_eval.py`, where `<kit>` is the checkout.
 
 ## What one run does

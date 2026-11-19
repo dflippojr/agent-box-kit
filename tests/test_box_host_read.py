@@ -1,5 +1,5 @@
 """Characterization of the read-only gh adapters: collect.Host (box-audit), select.Host and
-handoff_check.Host (orchestrate), and file_issues.gh_json (box-audit's file mode). A stand-in gh,
+handoff_check.Host (orchestrate), and filing.gh_json (box-audit's file mode, from box/lib). A stand-in gh,
 driven by a sidecar file rather than the environment it is asked to report, writes the exact bytes
 and exit code of each case and logs its argv and environment. No host is contacted."""
 import importlib.util
@@ -30,6 +30,8 @@ collect = load(AUDIT / "collect.py", "host_read_collect")
 selector = load(ORCHESTRATE / "select.py", "host_read_select")
 handoff = load(ORCHESTRATE / "handoff_check.py", "host_read_handoff")
 file_issues = load(AUDIT / "file_issues.py", "host_read_file_issues")
+# box/lib's filing, which file_issues.py files through; the scripts above put box/lib on sys.path.
+import filing  # noqa: E402
 
 FAKE_GH = r'''
 import json, os, sys
@@ -231,7 +233,8 @@ def test_loads_them_without_writing_bytecode(tmp_path, folder, name):
 
 
 def test_file_issues_loads_the_one_implementation():
-    assert Path(file_issues.gh_read.__file__) == ROOT / "box" / "lib" / "gh_read.py"
+    assert file_issues.file_all is filing.file_all
+    assert Path(filing.gh_read.__file__) == ROOT / "box" / "lib" / "gh_read.py"
 
 
 @pytest.mark.parametrize("out, err, code, expected", [
@@ -242,7 +245,7 @@ def test_file_issues_loads_the_one_implementation():
 def test_file_issues_read_responses_unchanged(out, err, code, expected, fake):
     gh, case, log = fake
     case(out, err, code)
-    assert file_issues.gh_json(gh, ["api", "repos/owner/app/x"]) == expected
+    assert filing.gh_json(gh, ["api", "repos/owner/app/x"]) == expected
     assert log()["args"] == ["api", "repos/owner/app/x"]
 
 
@@ -250,15 +253,15 @@ def test_file_issues_read_responses_unchanged(out, err, code, expected, fake):
 def test_file_issues_read_errors_match_gh_read(out, err, code, expected, fake):
     gh, case, _ = fake
     case(out, err, code)
-    assert file_issues.gh_json(gh, ["api", "repos/owner/app/x"]) == expected
+    assert filing.gh_json(gh, ["api", "repos/owner/app/x"]) == expected
 
 
 def test_file_issues_read_stops_at_the_shared_timeout(tmp_path, monkeypatch):
     slow = tmp_path / "slow_gh.py"
     slow.write_text("import time\ntime.sleep(20)\n", encoding="utf-8")
-    monkeypatch.setattr(file_issues.gh_read, "TIMEOUT", 1)
+    monkeypatch.setattr(filing.gh_read, "TIMEOUT", 1)
     started = time.monotonic()
-    body, error = file_issues.gh_json([sys.executable, str(slow)], ["api", "repos/owner/app/x"])
+    body, error = filing.gh_json([sys.executable, str(slow)], ["api", "repos/owner/app/x"])
     assert body is None and error.startswith("gh failed: ") and "timed out" in error, error
     assert time.monotonic() - started < 10
 

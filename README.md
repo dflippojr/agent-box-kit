@@ -51,6 +51,8 @@ box/
   STANDARD.md                  the 9/10 and 10/10 bar: six dimensions (G R J W P D), evidence, scoring
   profiles/                    home and corporate setups a repo picks with `.box-profile`, and a
                                loader that reads the choice (stdlib Python)
+  lib/                         the one home of the helpers box scripts share: path checks, git's
+                               environment, Markdown sections, the card and issue rules (stdlib)
   skills/box-audit/            score a repo against the standard: evidence collectors, an isolated
                                judge, a card check, and filing the proposed issues (stdlib Python)
   skills/box-crosspollinate/   compare box-audit cards across repos and propose porting each
