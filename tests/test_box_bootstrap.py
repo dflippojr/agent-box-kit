@@ -605,10 +605,11 @@ def test_elsewhere_prints_the_host_side_setting():
 # ----- templates and docs -------------------------------------------------------------------
 
 def test_docs_templates_are_agent_readys():
-    for name in ("README", "architecture", "data-model", "runtime", "testing"):
-        ours = (TEMPLATES / "docs" / (name + ".md")).read_text(encoding="utf-8")
-        theirs = (AGENT_READY / "docs" / (name + ".md")).read_text(encoding="utf-8")
-        assert ours.replace("\r\n", "\n") == theirs.replace("\r\n", "\n"), name
+    """Bootstrap ships agent-ready's five docs templates as copies, since each skill folder is
+    used alone; the copies stay byte-identical, so an edit to one copy fails here (issue #36)."""
+    for name in [d.split("/")[1] for d in DOCS]:
+        assert (TEMPLATES / "docs" / name).read_bytes() == \
+            (AGENT_READY / "docs" / name).read_bytes(), name
 
 
 def test_agents_template_keeps_agent_readys_sections():
