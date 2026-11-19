@@ -10,16 +10,12 @@ import unicodedata
 
 import issue_folder
 import scorecard
-from md import HEADING, headings, lines
+from md import HEADING, HTML, ONE_LINE_COMMENT, headings, lines
 
 PARTS = ["Problem", "Want", "Constraints", "Dependencies", "Out of scope"]
 KNOWN = (scorecard.TIERS | scorecard.REVIEWS | scorecard.OTHER_LABELS | set(issue_folder.HELD)
          | {issue_folder.PRESENT, "bug"})
 SETEXT = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
-HTML = re.compile(r"^ {0,3}<(?:!--|[!?]|/?[A-Za-z][A-Za-z0-9-]*(?:[ \t/>]|$))")
-# A comment that closes on its own line, such as a tool's marker, hides nothing: CommonMark ends
-# that HTML block on the same line.
-ONE_LINE_COMMENT = re.compile(r"^ {0,3}<!--(?:(?!-->).)*-->[ \t]*$")
 MARKUP = re.compile(r"<!--.*?-->|<!--|-->|<[^<>]*>")
 # `[text](dest)` and `[text][ref]` render as text; `[](dest)` renders as nothing. The
 # destination and title may hold balanced parentheses, two levels deep.

@@ -73,7 +73,8 @@ def evaluate(node, env, path):
         return os.pardir
     if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute) \
             and node.value.attr == "parents":
-        index = node.slice.value if isinstance(node.slice, ast.Index) else node.slice  # 3.8
+        index = node.slice.value if isinstance(node.slice, getattr(ast, "Index", ())) \
+            else node.slice  # 3.8 wraps a subscript in ast.Index
         if isinstance(index, ast.Constant) and isinstance(index.value, int):
             return Path(evaluate(node.value.value, env, path)).parents[index.value]
         raise Unknown(ast.dump(node))
@@ -121,13 +122,13 @@ def only_filters_sys_path(value):
             and value.elt.id == value.generators[0].target.id)
 
 
-def census(path):
+def census(path, box=BOX):
     """(edits, strips, loads, problems) for one file: each sys.path edit as (line, the folder it
     adds or None), each own-folder strip's line, each by-path load's line, and what breaks the
     boundary."""
     tree = ast.parse(Path(path).read_text(encoding="utf-8"), str(path))
     env = module_env(tree, path)
-    own, lib = Path(os.path.realpath(str(path))).parent, Path(os.path.realpath(str(BOX))) / "lib"
+    own, lib = Path(os.path.realpath(str(path))).parent, Path(os.path.realpath(str(box))) / "lib"
     edits, strips, loads, problems = [], [], [], []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
@@ -190,7 +191,7 @@ def boundary_problems(path, box=BOX):
     path = Path(path)
     rel = path.relative_to(box).as_posix()
     in_lib = path.parent == Path(box) / "lib"
-    _, _, _, problems = census(path)
+    _, _, _, problems = census(path, box)
     out = ["%s: %s" % (rel, p) for p in problems]
     tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
     lib, scripts = lib_modules(box), scripts_by_folder(box)
@@ -216,7 +217,7 @@ def boundary_problems(path, box=BOX):
             out.append("%s:%d: imports box/lib inside a block; import it at the top, so `--help` "
                        "and a symlinked install load it too" % (rel, node.lineno))
     if in_lib:
-        if any(census(path)[0]):
+        if any(census(path, box)[0]):
             out.append("%s: a box/lib module edits sys.path" % rel)
         return out
     for stmt in tree.body:
@@ -305,33 +306,30 @@ def write_script(tmp_path, folder, text):
     ("def main():\n    import paths\n", "inside a block"),
 ], ids=["other-skill", "unknown", "assigned", "extend", "spec", "runpy", "inside", "section",
         "lazy"])
-def test_the_boundary_check_catches(tmp_path, monkeypatch, text, problem):
+def test_the_boundary_check_catches(tmp_path, text, problem):
     path = write_script(tmp_path, "skills/a/scripts", text)
-    monkeypatch.setattr(sys.modules[__name__], "BOX", tmp_path / "box")
     found = boundary_problems(path, tmp_path / "box")
     assert any(problem in p for p in found), found
 
 
-def test_the_boundary_check_allows_its_own_folder_box_lib_and_a_strip(tmp_path, monkeypatch):
+def test_the_boundary_check_allows_its_own_folder_box_lib_and_a_strip(tmp_path):
     text = ("import os\nimport sys\nHERE = os.path.dirname(os.path.abspath(__file__))\n"
             "sys.path[:] = [p for p in sys.path if os.path.abspath(p or os.curdir) != HERE]\n"
             "sys.dont_write_bytecode = True\nfrom pathlib import Path\n"
             "sys.path.insert(0, str(Path(__file__).resolve().parent))\n"
             "sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'lib'))\n")
     path = write_script(tmp_path, "skills/a/scripts", text)
-    monkeypatch.setattr(sys.modules[__name__], "BOX", tmp_path / "box")
     assert boundary_problems(path, tmp_path / "box") == []
-    edits, strips, loads, _ = census(path)
+    edits, strips, loads, _ = census(path, tmp_path / "box")
     assert len(edits) == 2 and len(strips) == 1 and loads == []
 
 
-def test_an_import_of_another_folders_script_is_caught(tmp_path, monkeypatch):
+def test_an_import_of_another_folders_script_is_caught(tmp_path):
     box = tmp_path / "box"
     other = box / "skills" / "b" / "scripts" / "helper.py"
     other.parent.mkdir(parents=True)
     other.write_text("X = 1\n", encoding="utf-8")
     path = write_script(tmp_path, "skills/a/scripts", "import helper\n")
-    monkeypatch.setattr(sys.modules[__name__], "BOX", box)
     found = boundary_problems(path, box)
     assert any("another box folder" in p for p in found), found
 
@@ -342,7 +340,7 @@ def report(box=BOX):
     totals = {"sys.path inserts": 0, "own-folder strips": 0, "by-path loads": 0}
     with_edits, with_loads = set(), set()
     for path in files:
-        edits, strips, loads, _ = census(path)
+        edits, strips, loads, _ = census(path, box)
         inserts = list(edits)
         totals["sys.path inserts"] += len(inserts)
         totals["own-folder strips"] += len(strips)

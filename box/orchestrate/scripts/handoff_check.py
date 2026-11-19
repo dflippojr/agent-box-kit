@@ -66,7 +66,7 @@ from urllib.parse import quote  # noqa: E402
 
 import gh_read  # noqa: E402
 from git_env import git_env  # noqa: E402
-from md import section  # noqa: E402  fence-aware: a fenced `## Proof` example is not the section
+import md  # noqa: E402  fence-aware: a fenced `## Proof` example is not the section
 
 DEFAULT_OWNER_LABELS = "gate-change-approved,findings-accepted"
 DEFAULT_ACCEPT = "findings-accepted"
@@ -98,7 +98,8 @@ class UsageError(Exception):
 # ----- PR body: proof table and closing reference --------------------------------------------
 
 def strip_comments(text):
-    return re.sub(r"<!--.*?-->", "", (text or "").replace("\r\n", "\n"), flags=re.S)
+    """text without HTML comments. One left open hides the rest of the text, as on the host."""
+    return re.sub(r"<!--.*?(?:-->|\Z)", "", (text or "").replace("\r\n", "\n"), flags=re.S)
 
 
 def cells(line):
@@ -110,10 +111,16 @@ def proof_problems(body):
     with Criterion, How verified and Evidence columns and at least one row with no empty cell,
     then non-empty `### Not verified` and `### Gate changes` sections."""
     text = strip_comments(body)
-    proof = section(text, "Proof", 2)
-    if proof is None:
+    found = md.headings(text)
+    at = next((i for i, h in enumerate(found) if h[0] == 2 and h[1].lower() == "proof"), None)
+    if at is None:
         return ["no '## Proof' section"]
-    out = []
+    proof = found[at][3]
+    end = next((h[2] for h in found[at + 1:] if h[0] <= 2), len(text))
+    # Up to the proof's end, every line must read as the host renders it: an odd fence or an
+    # HTML block there could show the owner code where this reads a proof.
+    out = ["line %d: %s; handoff_check cannot tell what the host shows after it, so move it "
+           "below the proof or remove it" % (n, why) for n, why in md.unread(text, end)]
     lines = [l for l in proof.splitlines()]
     start = next((i for i, l in enumerate(lines) if l.strip().startswith("|")), None)
     if start is None:
@@ -136,7 +143,7 @@ def proof_problems(body):
             if len(row) != len(table[0]) or not all(row):
                 out.append("proof table row %d has an empty or missing cell" % n)
     for name in ("Not verified", "Gate changes"):
-        part = section(proof, name, 3)
+        part = md.section(proof, name, 3)
         if part is None:
             out.append("no '### %s' section under '## Proof'" % name)
         elif not part.strip():

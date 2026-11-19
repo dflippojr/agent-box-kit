@@ -11,7 +11,8 @@ by lines() and opens nothing, so a fenced example of a heading is never read as 
 
 lines(body) yields (start, line number, line, fenced, problem) per line. headings(body) lists the
 headings with their sections. section(text, heading, level) is the text under the first `level`
-heading named `heading` (case-insensitive), or None.
+heading named `heading` (case-insensitive), or None. unread(text, end) lists the lines before
+`end` that may render otherwise than they are read here: odd fences and HTML blocks.
 """
 import re
 
@@ -23,6 +24,10 @@ HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]")
 FENCE = re.compile(r"^(`{3,}(?=[^`]*$)|~{3,})(.*)$")
 # Anything that looks like a fence: a run of three after whitespace, list or quote markers.
 FENCE_LIKE = re.compile(r"^[\s>]*(?:(?:[-*+]|\d{1,9}[.)])\s[\s>]*)*(?:`{3}|~{3})")
+# An HTML block's first line. A comment that closes on its own line, such as a tool's marker,
+# hides nothing: CommonMark ends that HTML block on the same line.
+HTML = re.compile(r"^ {0,3}<(?:!--|[!?]|/?[A-Za-z][A-Za-z0-9-]*(?:[ \t/>]|$))")
+ONE_LINE_COMMENT = re.compile(r"^ {0,3}<!--(?:(?!-->).)*-->[ \t]*$")
 
 
 def lines(body):
@@ -75,3 +80,20 @@ def section(text, heading, level):
         if found_level == level and title.lower() == heading.lower():
             return body
     return None
+
+
+def unread(text, end=None):
+    """(line number, why) for each line before position `end` (default: all) that this module
+    does not read the way a host renders it: a line that looks like a fence but is not one read
+    exactly, or the first line of an HTML block outside fenced code (a comment closed on its own
+    line excepted). What follows such a line may render as code or raw HTML though it is read
+    here as Markdown, so a caller that must read what the host shows fails closed on it."""
+    out = []
+    for pos, n, line, fenced, problem in lines(text):
+        if end is not None and pos >= end:
+            break
+        if problem:
+            out.append((n, problem))
+        elif not fenced and HTML.match(line) and not ONE_LINE_COMMENT.match(line):
+            out.append((n, "an HTML block, which the host renders as HTML, not Markdown"))
+    return out

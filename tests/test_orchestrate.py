@@ -1505,8 +1505,8 @@ def test_a_proof_the_host_renders_as_code_or_html_is_not_ready(wrap):
     could hide the real proof, so it fails closed, naming the line."""
     good = fixture("pr_cases.json")["base"]["repos/owner/app/pulls/12"]["body"]
     found = handoff.proof_problems(wrap(proof_of(good)))
-    assert found and all(p.startswith("line 1: ") or p.startswith("line 3: ") for p in found), \
-        found
+    assert found and found[0].split(":")[0] in ("line 1", "line 3"), found
+    assert all(re.match(r"line \d+: ", p) and "move it below the proof" in p for p in found), found
 
 
 def test_an_unclosed_comment_hides_the_rest_of_the_body():
