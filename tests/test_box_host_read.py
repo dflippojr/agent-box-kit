@@ -216,20 +216,33 @@ def test_one_git_environment_loaded_from_this_checkout(module):
     assert module.git_env.__code__.co_filename == str(ROOT / "box" / "lib" / "git_env.py")
 
 
-@pytest.mark.parametrize("folder,name", [(AUDIT, "collect"), (ORCHESTRATE, "handoff_check")],
-                         ids=["collect", "handoff"])
-def test_loads_them_without_writing_bytecode(tmp_path, folder, name):
-    """Each script turns bytecode off before loading the helpers, so an inherited
+LIB_USERS = sorted(p for p in (ROOT / "box").rglob("*.py")
+                   if "templates" not in p.parts and p.parent.name != "lib"
+                   and '/ "lib"))' in p.read_text(encoding="utf-8"))
+
+
+def test_every_script_that_loads_box_lib_is_listed():
+    names = {p.name for p in LIB_USERS}
+    assert {"collect.py", "handoff_check.py", "select.py", "card.py", "judge.py", "audit.py",
+            "file_issues.py", "bootstrap.py", "compare.py", "hunt.py", "issue_lint.py",
+            "refine.py", "runner.py", "skill_eval.py", "profile.py"} <= names, names
+
+
+@pytest.mark.parametrize("path", LIB_USERS, ids=lambda p: p.name)
+def test_loads_them_without_writing_bytecode(tmp_path, path):
+    """Each script turns bytecode off before loading box/lib, so an inherited
     PYTHONPYCACHEPREFIX, which may point inside an audited checkout, gets nothing from it. A fresh
-    interpreter per script: this module's own imports already turned bytecode off here."""
+    interpreter runs each script as the owner does, but without -B."""
     prefix = tmp_path / "cache"
     env = dict(os.environ, PYTHONPYCACHEPREFIX=str(prefix))
     env.pop("PYTHONDONTWRITEBYTECODE", None)
-    r = subprocess.run([sys.executable, "-c",
-                        "import sys; sys.path.insert(0, sys.argv[1]); import " + name, str(folder)],
-                       cwd=str(tmp_path), env=env, capture_output=True, text=True)
-    assert r.returncode == 0, r.stderr
-    assert not list(prefix.rglob("gh_read*.pyc")) and not list(prefix.rglob("git_env*.pyc"))
+    r = subprocess.run([sys.executable, str(path), "--help"], cwd=str(tmp_path), env=env,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+    lib = {p.stem for p in (ROOT / "box" / "lib").glob("*.py")}
+    written = [f.name for f in prefix.rglob("*.pyc") if f.name.split(".")[0] in lib]
+    assert written == [], written
 
 
 def test_file_issues_loads_the_one_implementation():
