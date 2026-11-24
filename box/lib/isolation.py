@@ -11,7 +11,11 @@ its parts, which skill-eval's runner reuses with its own folder prefix and mark 
 
 Every path digest, copy_home and write_back read, hash or copy comes from the command line, so
 each is first checked with paths.contained against the root it must stay under (the owner's
-home or the isolated one) and then used only in its resolved form (issue #47).
+home or the isolated one) and then used only in its resolved form (issue #47). Anything the
+session started can outlive it (run kills only the command, not its descendants) and still
+write the isolated home, so each file is opened through paths.open_inside, read once, and only
+the bytes read are hashed or copied; write_back writes through the original's folder
+descriptor. A session copy with other hard links is refused.
 """
 import hashlib
 import os
@@ -24,7 +28,8 @@ import tempfile
 import time
 from pathlib import Path
 
-from paths import contained, inside, is_link
+from paths import NOFOLLOW, contained, inside, is_link, open_dir_inside, open_inside, \
+    write_inside
 
 ALLOW_ENV = ("PATH", "PATHEXT", "SYSTEMROOT", "SystemRoot", "WINDIR", "COMSPEC", "SystemDrive",
              "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "OS",
@@ -39,10 +44,16 @@ INSTRUCTION_ENTRIES = ("AGENTS.md", "AGENTS.override.md", "CLAUDE.md", "CLAUDE.l
                        "GEMINI.md", ".claude", ".codex", ".agents", ".gemini")
 
 
-def digest(path, root):
+def read_inside(path, root, single=False):
+    """(bytes, resolved path) of `path`, read once through paths.open_inside."""
+    fd, real = open_inside(path, root, single)
+    with os.fdopen(fd, "rb") as f:
+        return f.read(), real
+
+
+def digest(path, root, single=False):
     """SHA-256 of `path`, which must stay inside `root` (paths.contained raises ValueError)."""
-    with open(str(contained(path, root)), "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
+    return hashlib.sha256(read_inside(path, root, single)[0]).hexdigest()
 
 
 def check_copy(rel, real_home, protect=None):
@@ -144,12 +155,11 @@ def copy_home(home, copy, keep, real_home):
     it means, and nothing is written back."""
     copied = []
     for rel in copy:
-        src = contained(real_home / rel, real_home)
+        data, src = read_inside(real_home / rel, real_home)
         dst = home / rel
-        target = contained(dst, home, strict=False)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(str(src), str(target))
-        copied.append((src, dst, digest(dst, home)))
+        contained(dst, home, strict=False).parent.mkdir(parents=True, exist_ok=True)
+        write_inside(dst, home, data)
+        copied.append((src, dst, digest(dst, home, single=True)))
     return isolated_env(home, keep), copied
 
 
@@ -216,28 +226,57 @@ def write_back(original, copy, before, home, real_home):
     """Keep a login the judge refreshed, unless the owner's file changed meanwhile. `original`
     was resolved when it was copied; a folder on it that has become a link since is refused.
     The copy must still be inside the isolated `home` and the original inside `real_home`: a
-    session that swapped its copy for a link out is refused before the link is read."""
+    session that swapped its copy for a link out, or for a hard link, is refused before it is
+    read. The copy is read once, and the bytes hashed are the bytes written."""
     try:
         if not copy.is_file():
             return
-        copy = contained(copy, home)
-        if digest(copy, home) == before or digest(original, real_home) != before:
+        data = read_inside(copy, home, single=True)[0]
+        if hashlib.sha256(data).hexdigest() == before or digest(original, real_home) != before:
             return
         if original.parent.resolve() != original.parent:
             raise OSError("a folder on its path is now a link")
-        # mkstemp creates the file exclusively and owner-only; it then takes the original's mode,
-        # so a private login never becomes readable by others on the way.
+        replace_file(original, real_home, data)
+        print("judge: wrote the refreshed %s back" % original.name, file=sys.stderr)
+    except (OSError, ValueError) as e:
+        print("judge: could not write back %s: %s" % (original.name, e), file=sys.stderr)
+
+
+def replace_file(original, real_home, data):
+    """Replace `original` with `data`. The new file is created exclusively and owner-only, then
+    takes the original's mode, so a private login never becomes readable by others on the way.
+    Where paths.AT_FDS holds, every step goes through the folder's descriptor (opened without
+    following a link), so the file replaced is in the folder that was checked."""
+    folder = open_dir_inside(original.parent, real_home)
+    if folder is None:
         fd, tmp = tempfile.mkstemp(prefix=original.name + ".", suffix=".box-audit-tmp",
                                    dir=str(original.parent))
         try:
-            with os.fdopen(fd, "wb") as f, open(copy, "rb") as src:
-                shutil.copyfileobj(src, f)
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
             os.chmod(tmp, stat.S_IMODE(original.stat().st_mode))
             os.replace(tmp, str(original))
         except OSError:
             if os.path.exists(tmp):
                 os.unlink(tmp)
             raise
-        print("judge: wrote the refreshed %s back" % original.name, file=sys.stderr)
-    except (OSError, ValueError) as e:
-        print("judge: could not write back %s: %s" % (original.name, e), file=sys.stderr)
+        return
+    try:
+        st = os.stat(original.name, dir_fd=folder, follow_symlinks=False)
+        if not stat.S_ISREG(st.st_mode):
+            raise OSError("%s is no longer a regular file" % original)
+        tmp = "%s.%s.box-audit-tmp" % (original.name, os.urandom(6).hex())
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | NOFOLLOW, 0o600, dir_fd=folder)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+                os.fchmod(f.fileno(), stat.S_IMODE(st.st_mode))
+            os.rename(tmp, original.name, src_dir_fd=folder, dst_dir_fd=folder)
+        except BaseException:
+            try:
+                os.unlink(tmp, dir_fd=folder)
+            except OSError:
+                pass
+            raise
+    finally:
+        os.close(folder)

@@ -316,6 +316,7 @@ def swap_after_check(monkeypatch, level, folder, name, outside):
 def test_digest_refuses_a_swap_between_check_and_open(tree, opened, monkeypatch, level):
     home = tree["home"]
     write(home, ".agent/login.json", "copy")
+    del opened[:]  # the setup write above
     done = swap_after_check(monkeypatch, level, home / ".agent", "login.json", tree["outside"])
     with pytest.raises((OSError, ValueError)):
         isolation.digest(home / ".agent" / "login.json", home)

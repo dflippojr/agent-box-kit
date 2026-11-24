@@ -6,7 +6,6 @@ spies only record calls and pass them through to the real functions."""
 import hashlib
 import json
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -128,14 +127,14 @@ def test_copies_keep_order_bytes_resolved_originals_and_hashes_and_env_comes_aft
 def test_a_later_copy_that_fails_stops_before_the_env_and_writes_nothing_back(
         caller, owner, monkeypatch):
     rels = list(LOGINS)
-    real_copyfile = shutil.copyfile
+    real_open_inside = isolation.open_inside
 
-    def copyfile(src, dst, *a, **kw):
-        if Path(src) == owner["home"] / rels[1]:
+    def open_inside(path, root, *a, **kw):  # where copy_home reads each source (issue #47)
+        if Path(path) == owner["home"] / rels[1]:
             raise PermissionError("synthetic copy failure")
-        return real_copyfile(src, dst, *a, **kw)
+        return real_open_inside(path, root, *a, **kw)
 
-    monkeypatch.setattr(shutil, "copyfile", copyfile)
+    monkeypatch.setattr(isolation, "open_inside", open_inside)
     command = cli(owner, refresh(rels, b"changed"))
     if caller == "judge":
         with pytest.raises(PermissionError, match="synthetic copy failure"):
