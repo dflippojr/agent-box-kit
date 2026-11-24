@@ -1081,6 +1081,14 @@ def test_fence_like_still_finds_a_fence_after_markers(line):
     assert md.FENCE_LIKE.match(line)
 
 
+@pytest.mark.parametrize("line, found", [
+    ("```", ("```", "")), ("````py", ("````", "py")), ("~~~ a`b", ("~~~", " a`b")),
+    ("``` a`b", None), ("``", None), (" ```", None), ("~~", None), ("", None),
+])
+def test_a_fence_line_is_a_run_of_three_with_no_backtick_after_backticks(line, found):
+    assert md.fence_line(line) == found
+
+
 @pytest.mark.parametrize("line", ["'# ' + '#' * 200000 + 'x'", "'# ' + ' #\\t' * 70000 + 'x'"])
 def test_heading_does_not_backtrack_on_a_long_run_of_closing_hashes(line):
     """`(.*?)[ \\t#]*$` rescanned the rest of the line for each character the lazy text took, so

@@ -19,9 +19,7 @@ import re
 # Only the marker: headings() strips the closing `#`s in Python. A lazy `(.*?)[ \t#]*$` here
 # rescanned the rest of the line for each character it took.
 HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]")
-# A fence line the lint reads: at column 0, three or more backticks (with no backtick after
-# them) or tildes. A closer has only ASCII spaces or tabs after its run.
-FENCE = re.compile(r"^(`{3,}(?=[^`]*$)|~{3,})(.*)$")
+
 # Anything that looks like a fence: a run of three after whitespace, list or quote markers.
 FENCE_LIKE = re.compile(r"^[\s>]*(?:(?:[-*+]|\d{1,9}[.)])\s[\s>]*)*(?:`{3}|~{3})")
 # An HTML block's first line. A comment that closes on its own line, such as a tool's marker,
@@ -30,6 +28,18 @@ HTML = re.compile(r"^ {0,3}<(?:!--|[!?]|/?[A-Za-z][A-Za-z0-9-]*(?:[ \t/>]|$))")
 # One line and its ending, in a single linear pass: text then an optional ending, or a bare ending.
 LINE = re.compile(r"[^\r\n]+(?:\r\n|\r|\n)?|\r\n|\r|\n")
 ONE_LINE_COMMENT = re.compile(r"^ {0,3}<!--(?:(?!-->).)*-->[ \t]*$")
+
+
+def fence_line(line):
+    """(run, rest) for a fence line the lint reads: at column 0, three or more backticks (with
+    no backtick after them) or tildes; else None. A closer has only ASCII spaces or tabs after
+    its run. Scanned without a regex: a lookahead after a backtick run read as backtracking."""
+    for mark in "`~":
+        run = len(line) - len(line.lstrip(mark))
+        if run >= 3:
+            rest = line[run:]
+            return None if mark == "`" and "`" in rest else (line[:run], rest)
+    return None
 
 
 def raw_lines(body):
@@ -45,7 +55,7 @@ def lines(body):
     fence, pos = None, 0
     for n, raw in enumerate(raw_lines(body), 1):
         line, problem = raw.rstrip("\r\n"), None
-        f = FENCE.match(line)
+        f = fence_line(line)
         if FENCE_LIKE.match(line):
             if any(c.isspace() and c not in " \t" for c in line):
                 problem = "non-ASCII whitespace on a code fence line; use plain spaces"
@@ -56,11 +66,10 @@ def lines(body):
         fenced = fence is not None
         if problem is None and f:
             if fence is None:
-                fence, fenced = f.group(1), True
+                fence, fenced = f[0], True
             # CommonMark: the closing fence repeats the opening character at least as many
             # times and has nothing but spaces or tabs after it.
-            elif f.group(1)[0] == fence[0] and len(f.group(1)) >= len(fence) \
-                    and not f.group(2).strip(" \t"):
+            elif f[0][0] == fence[0] and len(f[0]) >= len(fence) and not f[1].strip(" \t"):
                 fence = None
         yield pos, n, line, fenced, problem
         pos += len(raw)

@@ -90,7 +90,7 @@ def write_outside(path, text, root):
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
-        mask = os.umask(0)
+        mask = os.umask(0o077)  # probe with a restrictive mask: never open, even briefly
         os.umask(mask)
         os.chmod(tmp, 0o666 & ~mask)  # mkstemp makes it owner-only; give it a new file's mode
         os.replace(tmp, str(path))

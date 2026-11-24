@@ -193,11 +193,11 @@ def check_parts(where, names, positions, dependencies):
 def check_issue(dim, title, body):
     out = []
     where = "%s issue %r" % (dim, title)
-    m = re.search(r"^Labels:\s*(.+)$", body, re.M)
+    m = re.search(r"^Labels:[ \t]*(\S.*)$", body, re.M)
     labels = [l.strip() for l in m.group(1).split(",")] if m else []
     if not m:
         out.append("%s: no Labels: line" % where)
-    d = re.search(r"^Open decisions:\s*(.*)$", body, re.M)
+    d = re.search(r"^Open decisions:(.*)$", body, re.M)  # group stripped below
     open_ = not re.match(r"^none\.?$", d.group(1).strip(), re.I) if d else None
     out += check_labels(where, labels, open_)
     if not d:
