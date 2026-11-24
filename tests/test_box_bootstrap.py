@@ -49,6 +49,10 @@ Closes #7
 
 
 def run(args, cwd=None, env=None):
+    # PYTEST_ADDOPTS belongs to the outer test run (a --basetemp inside a checkout, say). The
+    # sample repo's gate runs its own pytest, which must not inherit those options.
+    env = {k: v for k, v in (os.environ if env is None else env).items()
+           if k != "PYTEST_ADDOPTS"}
     return subprocess.run([str(a) for a in args], cwd=cwd, capture_output=True, text=True,
                           encoding="utf-8", errors="replace", env=env)
 
