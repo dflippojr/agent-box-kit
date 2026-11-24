@@ -54,46 +54,28 @@ import sys
 # would put inside the audited checkout. Startup, before this line, is startup_bytecode()'s job.
 sys.dont_write_bytecode = True
 
+from pathlib import Path  # noqa: E402
+
+# box/lib, in the checkout this file sits in, holds the helpers box scripts share (issue #36).
+# Bytecode is off by now.
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+
 import argparse  # noqa: E402
-import importlib.util  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 import re  # noqa: E402
 import shlex  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
-import tempfile  # noqa: E402
 from collections import Counter, defaultdict  # noqa: E402
 from datetime import datetime, timezone  # noqa: E402
-from pathlib import Path  # noqa: E402
 from urllib.parse import quote  # noqa: E402
 
-# gh's response handling and git's environment, one implementation each for box-audit and
-# orchestrate, loaded by path from box/lib in the checkout this file sits in. Bytecode is off by
-# now, and the import path is untouched.
-BOX_LIB = Path(__file__).resolve().parents[3] / "lib"
-
-
-def load_lib(name):
-    spec = importlib.util.spec_from_file_location("box_" + name, str(BOX_LIB / (name + ".py")))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-gh_read = load_lib("gh_read")
-git_env = load_lib("git_env").git_env
-
-
-def load_select():
-    """box/orchestrate's select.py, which reads issue folders, loaded by path under another name
-    (`import select` finds the standard library's module). Loaded only for --issues-folder."""
-    path = BOX_LIB.parent / "orchestrate" / "scripts" / "select.py"
-    spec = importlib.util.spec_from_file_location("box_orchestrate_select", str(path))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
+import gh_read  # noqa: E402
+import issue_folder  # noqa: E402
+from git_env import git_env  # noqa: E402
+from paths import (inside, is_link, linked, startup_bytecode, unsafe_output,  # noqa: E402,F401
+                   write_outside)
 
 MAX_READ = 200000
 MAX_TEST_FILES = 3000
@@ -192,38 +174,21 @@ def tracked_files(repo):
     return sorted(f for f in (out or "").split("\0") if f)
 
 
-def is_link(path):
-    """A symlink, or on Windows a junction: either can point outside the checkout."""
-    if os.path.islink(str(path)):
-        return True
-    if os.name != "nt":
-        return False
-    try:
-        os.readlink(str(path))  # succeeds for junctions too (Python 3.8+)
-        return True
-    except (OSError, ValueError):
-        return False
-
-
-def linked(repo, rel):
-    """True if rel, or a folder on the way to it, is a link. Such a path is never read: a tracked
-    link can point at the owner's own instruction files, which must not reach the judge."""
-    p = Path(repo)
-    for part in Path(rel).parts:
-        p = p / part
-        if is_link(p):
-            return True
-    return False
-
-
 def linked_files(repo, files):
-    """The tracked files that are links or sit under one, checking each folder once."""
+    """The tracked files that are links or sit under one, checking each folder once. A path
+    that cannot be checked counts as a link, as in paths.linked."""
     memo = {}
+
+    def link(rel):
+        try:
+            return is_link(Path(repo) / rel)
+        except OSError:
+            return True
 
     def check(rel):
         if rel not in memo:
             parent = rel.rpartition("/")[0]
-            memo[rel] = bool(parent) and check(parent) or is_link(Path(repo) / rel)
+            memo[rel] = bool(parent) and check(parent) or link(rel)
         return memo[rel]
     return [f for f in files if check(f)]
 
@@ -1277,10 +1242,9 @@ def count_defect_issues(items, seen, source, gaps=(), scope=""):
 def folder_defects(ctx, items, data):
     """Defect issues from the issue folder, a hostless project's tracker, counted as from the
     host: every issue with a defect label, open or closed."""
-    select = load_select()
     try:
-        issues = select.read_folder(ctx["issues_folder"])
-    except select.InputError as e:
+        issues = issue_folder.read_folder(ctx["issues_folder"])
+    except issue_folder.InputError as e:
         out = unavailable("defects", "issue folder: %s" % e)
         out["items"], out["data"] = items, data
         return out
@@ -1483,62 +1447,6 @@ def checkout_root(path):
     stands for its whole checkout, so every collector and boundary check sees the same tree."""
     top = git(Path(path).resolve(), "rev-parse", "--show-toplevel")
     return Path(top.strip()).resolve() if top and top.strip() else None
-
-
-def inside(path, root):
-    try:
-        path.resolve().relative_to(root.resolve())
-        return True
-    except ValueError:
-        return False
-
-
-def startup_bytecode(root):
-    """Why interpreter startup may have written bytecode inside root, or None. Startup runs
-    before a script's first line, so only `python -B` (or PYTHONDONTWRITEBYTECODE) stops it."""
-    prefix = getattr(sys, "pycache_prefix", None)
-    if sys.flags.dont_write_bytecode or not prefix or not inside(Path(prefix), root):
-        return None
-    return ("PYTHONPYCACHEPREFIX (%s) is inside the audited repo, so interpreter startup may "
-            "already have written bytecode there. Run with `python -B`, or unset it" % prefix)
-
-
-def unsafe_output(path, root):
-    """Why writing path could change something inside root, or None. A file with other hard
-    links is refused: the other link may be inside root, and replacing this one would still
-    change that file's link count."""
-    path = Path(path)
-    if inside(path, root) or inside(path.parent, root):
-        return "%s resolves inside the audited repo" % path
-    try:
-        if os.lstat(str(path)).st_nlink > 1:
-            return "%s has other hard links, which may be inside the audited repo" % path
-    except OSError:
-        pass
-    return None
-
-
-def write_outside(path, text, root):
-    """Write text to path, which unsafe_output must pass. The text goes to a new file created
-    beside path, which then replaces path's directory entry: an existing file is never written
-    through or truncated."""
-    path = Path(path)
-    problem = unsafe_output(path, root)
-    if problem:
-        raise ValueError(problem)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
-            f.write(text)
-        mask = os.umask(0)
-        os.umask(mask)
-        os.chmod(tmp, 0o666 & ~mask)  # mkstemp makes it owner-only; give it a new file's mode
-        os.replace(tmp, str(path))
-    except BaseException:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-        raise
 
 
 if __name__ == "__main__":

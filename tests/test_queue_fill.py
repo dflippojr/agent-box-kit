@@ -1,6 +1,7 @@
 """Tests for the queue-fill skill's scripts (box/skills/queue-fill/scripts). Inputs are built at
 runtime. Host calls go to a stand-in gh that answers `gh api` GETs from invented routes in
 GitHub's shape and logs every other command, so nothing reaches a network."""
+import importlib.util
 import json
 import os
 import re
@@ -19,14 +20,25 @@ AUDIT_SCRIPTS = ROOT / "box" / "skills" / "box-audit" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(AUDIT_SCRIPTS))
 
-import card  # noqa: E402
 import collect  # noqa: E402
 import file_issues  # noqa: E402
 import hunt  # noqa: E402
 import issue_lint  # noqa: E402
 import refine  # noqa: E402
+# box/lib, where the issue folder reader, the issue shape and the card's rules live (issue #36).
+# The scripts above put it on sys.path.
+import filing  # noqa: E402
+import issue_folder  # noqa: E402
+import issue_shape  # noqa: E402
+import md  # noqa: E402
+import paths  # noqa: E402
+import scorecard  # noqa: E402
 
-select = issue_lint.select
+# box/orchestrate's select.py, by path: `import select` finds the standard library's module.
+_spec = importlib.util.spec_from_file_location(
+    "queue_fill_select", str(ROOT / "box" / "orchestrate" / "scripts" / "select.py"))
+select = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(select)
 
 
 def script(path, *args, env=None, stdin=None):
@@ -195,7 +207,7 @@ HIDING = {
 @pytest.mark.parametrize("case", sorted(HIDING))
 def test_a_question_anywhere_blocks_ready(case):
     body = GOOD + HIDING[case]
-    assert issue_lint.open_questions(body), case
+    assert issue_shape.open_questions(body), case
     found = issue_lint.lint(body, ["tier:standard", "ready"])
     assert any("labelled ready with open decisions" in p for p in found), found
     before = ["tier:standard", "needs-refinement"]
@@ -295,14 +307,14 @@ NOT_PROMOTED = dict(R3, **R4)
 def test_refine_never_promotes_an_r3_body(tmp_path, case):
     folder = tmp_path / "issues"
     folder.mkdir()
-    write(folder / "5.md", file_issues.issue_file(
+    write(folder / "5.md", filing.issue_file(
         5, "Round totals", ["tier:standard", "needs-refinement"], GOOD + QUESTION +
         "\n## Owner answer\nPer invoice.\n", "2026-10-01T00:00:00Z", "open"))
     before = (folder / "5.md").read_bytes()
     r = script(SCRIPTS / "refine.py", "apply", "5", write(tmp_path / "new.md", NOT_PROMOTED[case]),
                "--folder", folder, "--apply")
     assert "now ready" not in r.stdout, r.stdout
-    issue = select.parse_issue_file(folder / "5.md")
+    issue = issue_folder.parse_issue_file(folder / "5.md")
     assert "ready" not in issue["labels"], issue["labels"]
     assert r.returncode == 1 or "needs-refinement" in issue["labels"], r.stdout
     if r.returncode == 1:
@@ -336,7 +348,7 @@ def test_needs_refinement_still_needs_an_open_question_heading():
 def test_refinement_never_promotes_a_body_the_lint_rejects(tmp_path):
     folder = tmp_path / "issues"
     folder.mkdir()
-    write(folder / "5.md", file_issues.issue_file(
+    write(folder / "5.md", filing.issue_file(
         5, "Round totals", ["tier:standard", "needs-refinement"], GOOD + QUESTION +
         "\n## Owner answer\nPer invoice.\n", "2026-10-01T00:00:00Z", "open"))
     body = GOOD + "\n<!--\nkept for later\n-->\n"
@@ -349,12 +361,14 @@ def test_refinement_never_promotes_a_body_the_lint_rejects(tmp_path):
 
 
 def test_the_lint_reuses_card_checks_not_a_copy(monkeypatch):
-    """The label and part rules live once, in card.py."""
-    source = (SCRIPTS / "issue_lint.py").read_text(encoding="utf-8")
-    assert "card.check_labels(" in source and "card.check_parts(" in source
+    """The label and part rules live once, in the card's rules (box/lib/scorecard.py)."""
+    source = Path(issue_shape.__file__).read_text(encoding="utf-8")
+    assert "scorecard.check_labels(" in source and "scorecard.check_parts(" in source
     assert "exactly one tier label" not in source.split('"""', 2)[2]
+    assert "exactly one tier label" not in (SCRIPTS / "issue_lint.py").read_text(
+        encoding="utf-8").split('"""', 2)[2]
     calls = []
-    monkeypatch.setattr(card, "check_labels", lambda *a: calls.append(a) or ["from card"])
+    monkeypatch.setattr(scorecard, "check_labels", lambda *a: calls.append(a) or ["from card"])
     assert "from card" in issue_lint.lint(GOOD, ["tier:standard"])
     assert calls
 
@@ -390,7 +404,7 @@ def card_with_open_decision():
 
 def test_every_gap_proposal_passes_the_lint():
     text = card_with_open_decision()
-    assert card.check(text) == []
+    assert scorecard.check(text) == []
     issues = file_issues.proposed(text)
     assert len(issues) == 6
     for i in issues:
@@ -408,7 +422,7 @@ def test_every_gap_proposal_passes_the_lint():
 def test_the_gap_pass_files_nothing_the_lint_rejects(tmp_path, mutate, problem):
     """The card check is looser than the lint; filing runs both."""
     text = mutate(make_card(["✓", "~", "✗", "~", "–", "~"]))
-    assert card.check(text) == []
+    assert scorecard.check(text) == []
     path = write(tmp_path / "card.md", text)
     fi = AUDIT_SCRIPTS / "file_issues.py"
     r = script(fi, path, "--repo", "o/r", "--offline")
@@ -425,7 +439,7 @@ def test_the_gap_pass_files_nothing_the_lint_rejects(tmp_path, mutate, problem):
 
 
 def folder_issue(folder, number, title, labels, body=GOOD, state="open"):
-    write(folder / ("%d.md" % number), file_issues.issue_file(
+    write(folder / ("%d.md" % number), filing.issue_file(
         number, title, labels, body, "2026-09-0%dT09:00:00Z" % number, state))
 
 
@@ -443,7 +457,7 @@ def test_gap_pass_into_a_folder_select_reads(tmp_path):
     r = script(fi, path, "--folder", folder, "--apply")
     assert r.returncode == 0, r.stdout + r.stderr
     assert sorted(p.name for p in folder.iterdir()) == ["%d.md" % n for n in (10, 11, 3, 7, 8, 9)]
-    issues = sorted(select.read_folder(folder), key=lambda i: i["number"])
+    issues = sorted(issue_folder.read_folder(folder), key=lambda i: i["number"])
     assert [i["title"] for i in issues if i["number"] >= 8] == \
         ["Fix %s gap 0" % d for d in "RJWD"]
     for i in issues:
@@ -551,6 +565,16 @@ def test_bug_hunt_findings_feed_the_d_collector():
     assert collect.BUGGY_LABEL.search("bug") and re.search(r"hunt", "Bug hunt: x", re.I)
 
 
+def test_hunt_accepts_exactly_the_change_references_collect_traces():
+    """hunt.py keeps its own copy of collect.py's CHANGE_REF: collect.py is part of the Standard
+    hash, and queue-fill may not import box-audit (issue #36). The copies stay equal."""
+    assert hunt.CHANGE_REF == collect.CHANGE_REF
+    for change in ("#57", "0123456789ab", "https://github.com/o/r/pull/3"):
+        assert hunt.INTRODUCING.match("Introducing change: %s" % change), change
+        assert collect.INTRODUCED.search(FINDING.format(title="x", change=change)), change
+    assert not hunt.INTRODUCING.match("Introducing change: abcdefg")
+
+
 def test_bug_hunt_dry_run_then_apply_on_the_host(tmp_path):
     folder = drafts(tmp_path, ("parse drops a line", "#57"), ("already filed", "unknown"))
     gh, env, calls = stand_in(tmp_path, {
@@ -626,7 +650,7 @@ def test_bug_hunt_into_a_folder(tmp_path):
     r = script(SCRIPTS / "hunt.py", folder, "--folder", issues, "--only",
                "Bug hunt: parse drops a line", "--apply")
     assert r.returncode == 0, r.stdout + r.stderr
-    [issue] = select.read_folder(issues)
+    [issue] = issue_folder.read_folder(issues)
     assert issue["number"] == 1 and issue["labels"] == ["bug", "tier:mechanical", "ready"]
     assert select.select([issue], 1)["dispatch"][0]["number"] == 1
 
@@ -693,10 +717,10 @@ def test_refine_makes_an_answered_issue_ready(tmp_path):
     assert (folder / "1.md").read_text(encoding="utf-8") == before
     r = refine_cli("apply", 1, body, "--folder", folder, "--apply")
     assert r.returncode == 0 and "REFINED #1 (now ready)" in r.stdout, r.stdout
-    issue = select.parse_issue_file(folder / "1.md")
+    issue = issue_folder.parse_issue_file(folder / "1.md")
     assert issue["labels"] == ["tier:standard", "P1", "ready"] and issue["body"] == REFINED
     assert issue["title"] == "Round half up" and issue["createdAt"] == "2026-09-01T09:00:00Z"
-    plan = select.select(select.read_folder(folder), 5)
+    plan = select.select(issue_folder.read_folder(folder), 5)
     assert 1 in {i["number"] for i in plan["dispatch"]}
 
 
@@ -706,7 +730,7 @@ def test_refine_keeps_needs_refinement_while_a_question_is_open(tmp_path):
     body = write(tmp_path / "new.md", REFINED + "\n## Open question\nWhich rounding mode?\n")
     r = refine_cli("apply", 1, body, "--folder", folder, "--apply")
     assert r.returncode == 0 and "REFINED #1\n" in r.stdout, r.stdout
-    issue = select.parse_issue_file(folder / "1.md")
+    issue = issue_folder.parse_issue_file(folder / "1.md")
     assert issue["labels"] == ["tier:standard", "needs-refinement", "P1"]
     assert "Which rounding mode?" in issue["body"]
 
@@ -754,8 +778,8 @@ def test_select_refuses_a_symlinked_issue_file(tmp_path):
     outside.mkdir()
     (folder / "3.md").replace(outside / "3.md")
     link_or_skip(os.symlink, outside / "3.md", folder / "3.md")
-    with pytest.raises(select.InputError, match="link"):
-        select.read_folder(folder)
+    with pytest.raises(issue_folder.InputError, match="link"):
+        issue_folder.read_folder(folder)
 
 
 @needs_safe_writes
@@ -833,8 +857,8 @@ def test_select_never_reads_an_issue_file_swapped_for_a_link_after_its_check(tmp
 
     monkeypatch.setattr(os, "lstat", lstat)
     monkeypatch.setattr(os, "open", open_)
-    with pytest.raises(select.InputError, match="link") as e:
-        issues = select.read_folder(folder)
+    with pytest.raises(issue_folder.InputError, match="link") as e:
+        issues = issue_folder.read_folder(folder)
         assert "QZJ" not in repr(issues)
     assert "QZJ" not in str(e.value)
 
@@ -844,8 +868,8 @@ def test_select_refuses_an_issue_file_with_other_hard_links(tmp_path):
     outside = outside_issue(tmp_path, 3)
     (folder / "3.md").unlink()
     link_or_skip(os.link, outside, folder / "3.md")
-    with pytest.raises(select.InputError, match="hard links"):
-        select.read_folder(folder)
+    with pytest.raises(issue_folder.InputError, match="hard links"):
+        issue_folder.read_folder(folder)
 
 
 def refine_in_process(capsys, folder, body, *extra):
@@ -876,7 +900,7 @@ def test_refine_writes_only_into_the_folder_it_read(tmp_path, monkeypatch, capsy
     code, out = refine_in_process(capsys, folder, body)
     assert outside_state(outside) == before, out
     assert code == 0 and "REFINED #1" in out, out
-    assert select.parse_issue_file(moved / "1.md")["body"] == REFINED
+    assert issue_folder.parse_issue_file(moved / "1.md")["body"] == REFINED
 
 
 def test_refine_refuses_a_folder_reached_through_a_link(tmp_path, capsys):
@@ -1047,22 +1071,30 @@ def test_fence_like_does_not_backtrack_on_a_long_list_marker_line(unit):
     took seconds and each few more doubled it. A child process keeps a regression from hanging the
     suite."""
     line = unit * 200 + "x"
-    code = ("import sys; sys.path[:0] = %r; import issue_lint; "
-            "assert issue_lint.FENCE_LIKE.match(%r) is None" % (sys.path, line))
+    code = ("import sys; sys.path[:0] = %r; import md; "
+            "assert md.FENCE_LIKE.match(%r) is None" % (sys.path, line))
     subprocess.run([sys.executable, "-c", code], check=True, timeout=20)
 
 
 @pytest.mark.parametrize("line", ["```", "- ```", "-  ```", "-   > ~~~", "1.  ```", " > * \t ```"])
 def test_fence_like_still_finds_a_fence_after_markers(line):
-    assert issue_lint.FENCE_LIKE.match(line)
+    assert md.FENCE_LIKE.match(line)
+
+
+@pytest.mark.parametrize("line, found", [
+    ("```", ("```", "")), ("````py", ("````", "py")), ("~~~ a`b", ("~~~", " a`b")),
+    ("``` a`b", None), ("``", None), (" ```", None), ("~~", None), ("", None),
+])
+def test_a_fence_line_is_a_run_of_three_with_no_backtick_after_backticks(line, found):
+    assert md.fence_line(line) == found
 
 
 @pytest.mark.parametrize("line", ["'# ' + '#' * 200000 + 'x'", "'# ' + ' #\\t' * 70000 + 'x'"])
 def test_heading_does_not_backtrack_on_a_long_run_of_closing_hashes(line):
     """`(.*?)[ \\t#]*$` rescanned the rest of the line for each character the lazy text took, so
     one heading line of 64 KB took over 5 s. Issue bodies are untrusted."""
-    code = ("import sys; sys.path[:0] = %r; import issue_lint; "
-            "assert issue_lint.headings(%s)[0][1].endswith('x')" % (sys.path, line))
+    code = ("import sys; sys.path[:0] = %r; import md; "
+            "assert md.headings(%s)[0][1].endswith('x')" % (sys.path, line))
     subprocess.run([sys.executable, "-c", code], check=True, timeout=5)
 
 
@@ -1072,9 +1104,9 @@ def test_heading_does_not_backtrack_on_a_long_run_of_closing_hashes(line):
     ("    # x", None), ("####### x", None), ("#x", None),
 ])
 def test_heading_still_strips_the_closing_sequence(line, heading):
-    found = [h[:2] for h in issue_lint.headings(line)]
+    found = [h[:2] for h in md.headings(line)]
     assert found == ([heading] if heading else [])
-    assert bool(issue_lint.HEADING.match(line)) == bool(heading)
+    assert bool(md.HEADING.match(line)) == bool(heading)
 
 
 @pytest.fixture
@@ -1083,24 +1115,24 @@ def by_path(monkeypatch):
     where the path says. /proc/self/fd stands in for GetFinalPathNameByHandleW."""
     if not os.path.isdir("/proc/self/fd"):
         pytest.skip("no /proc/self/fd to stand in for a handle's path")
-    monkeypatch.setattr(select, "DIR_FDS", False)
-    monkeypatch.setattr(select, "handle_path", lambda fd: os.readlink("/proc/self/fd/%d" % fd))
+    monkeypatch.setattr(issue_folder, "DIR_FDS", False)
+    monkeypatch.setattr(paths, "handle_path", lambda fd: os.readlink("/proc/self/fd/%d" % fd))
     return monkeypatch
 
 
 def test_issue_dir_by_path_reads_plain_files_and_refuses_links(tmp_path, by_path):
     folder = refine_folder(tmp_path)
-    assert sorted(i["number"] for i in select.read_folder(folder)) == [1, 2, 3]
+    assert sorted(i["number"] for i in issue_folder.read_folder(folder)) == [1, 2, 3]
     dir_link_or_skip(folder, tmp_path / "via")
-    with pytest.raises(select.InputError, match="passes through a link"):
-        select.read_folder(tmp_path / "via")
-    with pytest.raises(select.InputError, match="not a folder"):
-        select.read_folder(tmp_path / "nope")
+    with pytest.raises(issue_folder.InputError, match="passes through a link"):
+        issue_folder.read_folder(tmp_path / "via")
+    with pytest.raises(issue_folder.InputError, match="not a folder"):
+        issue_folder.read_folder(tmp_path / "nope")
     outside = outside_issue(tmp_path, 3)
     (folder / "3.md").unlink()
     link_or_skip(os.symlink, outside, folder / "3.md")
-    with pytest.raises(select.InputError, match="link") as e:
-        select.read_folder(folder)
+    with pytest.raises(issue_folder.InputError, match="link") as e:
+        issue_folder.read_folder(folder)
     assert "QZJ" not in str(e.value)
 
 
@@ -1117,16 +1149,16 @@ def test_issue_dir_by_path_never_reads_a_file_swapped_after_its_check(tmp_path, 
         return real_open(path, flags, *a, **kw)
 
     by_path.setattr(os, "open", open_)
-    with pytest.raises(select.InputError, match="link") as e:
-        select.read_folder(folder)
+    with pytest.raises(issue_folder.InputError, match="link") as e:
+        issue_folder.read_folder(folder)
     assert "QZJ" not in str(e.value)
 
 
 def test_issue_dir_refuses_to_read_where_it_cannot_tell_where_a_file_is(tmp_path, by_path):
     folder = refine_folder(tmp_path)
-    by_path.setattr(select, "handle_path", lambda fd: None)
-    with pytest.raises(select.InputError, match="cannot open a file without following links"):
-        select.read_folder(folder)
+    by_path.setattr(paths, "handle_path", lambda fd: None)
+    with pytest.raises(issue_folder.InputError, match="cannot open a file without following links"):
+        issue_folder.read_folder(folder)
 
 
 @pytest.mark.parametrize("make, message", [
@@ -1136,8 +1168,8 @@ def test_issue_dir_refuses_to_read_where_it_cannot_tell_where_a_file_is(tmp_path
 def test_issue_dir_refuses_entries_that_are_not_issue_files(tmp_path, make, message):
     folder = refine_folder(tmp_path)
     make(folder / "4.md")
-    with pytest.raises(select.InputError, match=message):
-        select.read_folder(folder)
+    with pytest.raises(issue_folder.InputError, match=message):
+        issue_folder.read_folder(folder)
 
 
 def test_refine_reports_a_missing_issue_file(tmp_path, capsys):

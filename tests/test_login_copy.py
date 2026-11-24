@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "box" / "skills" / "skill-eval" / "scripts"))
 
 import judge  # noqa: E402
 import runner  # noqa: E402
+import isolation  # noqa: E402  box/lib, on sys.path once judge is imported
 
 MARKER = "LOGIN_COPY_TEST_INSTRUCTIONS.md"
 # Nested at different depths; bytes a text-mode copy or a re-encoding would change.
@@ -44,13 +45,13 @@ def owner(tmp_path, monkeypatch):
     monkeypatch.setenv("LOGIN_KEEP", "kept-value")
     # Only the test's marker counts as an instruction file, so the folders above the temp dir
     # do not decide the outcome. The other box tests do the same.
-    monkeypatch.setattr(judge, "INSTRUCTION_ENTRIES", (MARKER,))
+    monkeypatch.setattr(isolation, "INSTRUCTION_ENTRIES", (MARKER,))
     root = tmp_path / "work-root"
     root.mkdir()
     bundle = tmp_path / "bundle"
     write(bundle, "prompt.md", "Score this repo.\n")
     calls = {"env": [], "write_back": []}
-    real_env, real_write_back = judge.isolated_env, judge.write_back
+    real_env, real_write_back = isolation.isolated_env, isolation.write_back
 
     def env_spy(home_arg, keep):
         calls["env"].append({"home": Path(home_arg), "keep": list(keep), "files": {
@@ -62,8 +63,8 @@ def owner(tmp_path, monkeypatch):
         calls["write_back"].append((original, copy, before, copy.read_bytes()))
         return real_write_back(original, copy, before)
 
-    monkeypatch.setattr(judge, "isolated_env", env_spy)
-    monkeypatch.setattr(judge, "write_back", write_back_spy)
+    monkeypatch.setattr(isolation, "isolated_env", env_spy)
+    monkeypatch.setattr(isolation, "write_back", write_back_spy)
     return {"tmp": tmp_path, "home": home, "root": root, "bundle": bundle, "calls": calls}
 
 
@@ -99,7 +100,7 @@ def sha(data):
 
 
 def test_runner_reuses_the_judges_isolation_module():
-    assert runner.iso is judge
+    assert runner.iso is isolation and judge.run is isolation.run
 
 
 @pytest.mark.parametrize("caller", CALLERS)

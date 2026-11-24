@@ -48,16 +48,17 @@ Closes #7
 """
 
 
-def run(args, cwd=None):
+def run(args, cwd=None, env=None):
     # PYTEST_ADDOPTS belongs to the outer test run (a --basetemp inside a checkout, say). The
     # sample repo's gate runs its own pytest, which must not inherit those options.
-    env = {k: v for k, v in os.environ.items() if k != "PYTEST_ADDOPTS"}
+    env = {k: v for k, v in (os.environ if env is None else env).items()
+           if k != "PYTEST_ADDOPTS"}
     return subprocess.run([str(a) for a in args], cwd=cwd, capture_output=True, text=True,
                           encoding="utf-8", errors="replace", env=env)
 
 
-def bootstrap(repo, *args):
-    return run([sys.executable, "-B", BOOTSTRAP, repo] + list(args))
+def bootstrap(repo, *args, env=None):
+    return run([sys.executable, "-B", BOOTSTRAP, repo] + list(args), env=env)
 
 
 def in_repo(repo, script, *args):
@@ -542,6 +543,42 @@ def test_an_agents_md_git_does_not_track_is_left_alone(tmp_path, ignored):
     assert "scripts/check.py" in collect.tracked_files(repo)
 
 
+def refs(repo):
+    return git(repo, "for-each-ref", "--format=%(refname) %(objectname)")
+
+
+def test_a_callers_git_common_dir_does_not_redirect_the_commits(tmp_path):
+    """The caller's GIT_COMMON_DIR points at another repository. Bootstrap's git runs without
+    it (issue #36: box/lib's git environment), so the rounds commit to REPO's own branch and the
+    other repository is untouched."""
+    repo = project_with_tests(tmp_path / "r")
+    other = empty_project(tmp_path / "other")
+    other_before = refs(other)
+    env = dict(os.environ, GIT_COMMON_DIR=str(other / ".git"),
+               GIT_OBJECT_DIRECTORY=str(other / ".git" / "objects"))
+    result = bootstrap(repo, "--profile", "home", env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert git(repo, "log", "--format=%s", "main..box-bootstrap").startswith(
+        "box-bootstrap round"), refs(repo)
+    assert refs(other) == other_before
+
+
+def test_a_callers_commit_identity_still_signs_the_commits(tmp_path):
+    """Bootstrap writes, so its git keeps the caller's author and committer variables, the
+    keep-list box/lib's git_env takes: dropping them would change who a commit is attributed
+    to."""
+    repo = project_with_tests(tmp_path / "r")
+    env = dict(os.environ, GIT_AUTHOR_NAME="Owner Name", GIT_AUTHOR_EMAIL="owner@example.com",
+               GIT_COMMITTER_NAME="Box Worker", GIT_COMMITTER_EMAIL="worker@example.com",
+               GIT_AUTHOR_DATE="2026-01-02T03:04:05Z", GIT_COMMITTER_DATE="2026-01-02T03:04:06Z")
+    result = bootstrap(repo, "--profile", "home", env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    who = git(repo, "log", "--format=%an <%ae> %aI|%cn <%ce> %cI", "main..box-bootstrap")
+    lines = set(who.splitlines())
+    assert lines == {"Owner Name <owner@example.com> 2026-01-02T03:04:05Z|"
+                     "Box Worker <worker@example.com> 2026-01-02T03:04:06Z"}, who
+
+
 def test_the_gate_workflow_gives_each_default_branch_push_its_own_group(tmp_path):
     """GitHub cancels a pending run when a newer one joins its concurrency group, whatever
     cancel-in-progress says, so pushes to the default branch must not share a group."""
@@ -608,10 +645,11 @@ def test_elsewhere_prints_the_host_side_setting():
 # ----- templates and docs -------------------------------------------------------------------
 
 def test_docs_templates_are_agent_readys():
-    for name in ("README", "architecture", "data-model", "runtime", "testing"):
-        ours = (TEMPLATES / "docs" / (name + ".md")).read_text(encoding="utf-8")
-        theirs = (AGENT_READY / "docs" / (name + ".md")).read_text(encoding="utf-8")
-        assert ours.replace("\r\n", "\n") == theirs.replace("\r\n", "\n"), name
+    """Bootstrap ships agent-ready's five docs templates as copies, since each skill folder is
+    used alone; the copies stay byte-identical, so an edit to one copy fails here (issue #36)."""
+    for name in [d.split("/")[1] for d in DOCS]:
+        assert (TEMPLATES / "docs" / name).read_bytes() == \
+            (AGENT_READY / "docs" / name).read_bytes(), name
 
 
 def test_agents_template_keeps_agent_readys_sections():

@@ -44,21 +44,27 @@ failed); command_not_run fails on any request, refused or not.
 Budgets are whole cents, at least 0.01 USD (usd()): the CLI is given two decimals, so the amount
 reserved, passed and recorded is the same number.
 """
-import difflib
-import json
-import math
-import os
-import re
-import shutil
-import subprocess
 import sys
-import tempfile
-import time
-from decimal import Decimal, InvalidOperation
-from pathlib import Path
+# Before any other import: box/lib gets no bytecode beside the helpers.
+sys.dont_write_bytecode = True
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "box-audit" / "scripts"))
-import judge as iso  # noqa: E402  box-audit's isolation: empty home, reduced env, safe work root
+from pathlib import Path  # noqa: E402
+
+# box/lib, in the checkout this file sits in, holds the helpers box scripts share (issue #36).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+
+import difflib  # noqa: E402
+import json  # noqa: E402
+import math  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+import time  # noqa: E402
+from decimal import Decimal, InvalidOperation  # noqa: E402
+
+import isolation as iso  # noqa: E402  box-audit's isolation: empty home, reduced env, safe work root
 
 PREFIX = "skill-eval-run-"
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".pytest_cache", ".venv"}

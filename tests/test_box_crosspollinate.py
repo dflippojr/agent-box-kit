@@ -24,9 +24,9 @@ sys.path.insert(0, str(SKILL / "scripts"))
 sys.path.insert(0, str(AUDIT_SCRIPTS))
 sys.path.insert(0, str(ROOT / "box" / "skills" / "queue-fill" / "scripts"))
 
-import card  # noqa: E402
 import compare  # noqa: E402
 import issue_lint  # noqa: E402
+import scorecard  # noqa: E402  box/lib, on sys.path once compare is imported
 
 
 def run(path, *args, cwd=None, env=None):
@@ -46,22 +46,22 @@ def titles(text):
 def with_mark(text, dim, mark):
     """The card `text` with `dim` re-marked n/a (`–`), its score row and Proven recomputed."""
     assert mark == "–"
-    row = card.ROW.search(text)
-    marks = card.parse_row(row.group(1))
-    marks[card.DIMENSIONS.index(dim)] = mark
-    new_row = " · ".join("%s %s" % (d, m) for d, m in zip(card.DIMENSIONS, marks))
-    text = text.replace(row.group(0), "`%s → %d`" % (new_row, card.overall(marks)))
-    text = re.sub(r"^- Proven: .*$", "- Proven: %s" % card.proven(marks), text, flags=re.M)
+    row = scorecard.ROW.search(text)
+    marks = scorecard.parse_row(row.group(1))
+    marks[scorecard.DIMENSIONS.index(dim)] = mark
+    new_row = " · ".join("%s %s" % (d, m) for d, m in zip(scorecard.DIMENSIONS, marks))
+    text = text.replace(row.group(0), "`%s → %d`" % (new_row, scorecard.overall(marks)))
+    text = re.sub(r"^- Proven: .*$", "- Proven: %s" % scorecard.proven(marks), text, flags=re.M)
     section = ("## %s: %s\n\n**Mark:** –\n\n**Reason:** invented for the test.\n\n"
                "### Evidence\n\nnone\n\n### Gap\n\nnone\n\n### Proposed issues\n\nnone\n\n"
-               % (dim, card.NAMES[dim]))
+               % (dim, scorecard.NAMES[dim]))
     return re.sub(r"^## %s: .*?(?=^## )" % dim, lambda m: section, text, flags=re.M | re.S)
 
 
 def test_fixture_cards_pass_the_card_check_and_use_generic_names():
     for path in CARDS:
         text = path.read_text(encoding="utf-8")
-        assert card.check(text) == [], path.name
+        assert scorecard.check(text) == [], path.name
         assert run(AUDIT_SCRIPTS / "card.py", "check", path).stdout.strip() == "CARD_OK"
         assert re.match(r"^# Box audit: repo-(alpha|beta|gamma) \(", text)
         assert "example/repo-" in text
@@ -109,7 +109,7 @@ def test_a_dimension_na_on_every_card_has_no_strongest_and_no_proposal(tmp_path)
     paths = []
     for path in CARDS:
         text = with_mark(path.read_text(encoding="utf-8"), "R", "–")
-        assert card.check(text) == [], path.name
+        assert scorecard.check(text) == [], path.name
         paths.append(tmp_path / path.name)
         paths[-1].write_text(text, encoding="utf-8")
     out = tmp_path / "out"
@@ -139,7 +139,7 @@ def with_standard(tmp_path, path, value):
     """A copy of the fixture card at `path` in `tmp_path`, stamped with Standard `value`."""
     text = path.read_text(encoding="utf-8")
     copy = tmp_path / path.name
-    copy.write_text(card.stamp_standard(text, value), encoding="utf-8")
+    copy.write_text(scorecard.stamp_standard(text, value), encoding="utf-8")
     return copy
 
 
@@ -150,9 +150,9 @@ def test_every_fixture_card_passes_the_check_with_or_without_a_standard(tmp_path
     fixtures = sorted(FIXTURES.glob("*.md"))
     assert fixtures
     for path in fixtures:
-        assert card.check(path.read_text(encoding="utf-8")) == [], path.name
-        stamped = with_standard(tmp_path, path, card.standard_hash())
-        assert card.check(stamped.read_text(encoding="utf-8")) == [], path.name
+        assert scorecard.check(path.read_text(encoding="utf-8")) == [], path.name
+        stamped = with_standard(tmp_path, path, scorecard.standard_hash())
+        assert scorecard.check(stamped.read_text(encoding="utf-8")) == [], path.name
         assert run(AUDIT_SCRIPTS / "card.py", "check", stamped).stdout.strip() == "CARD_OK"
 
 
@@ -229,10 +229,10 @@ def test_proposals_have_the_card_shape_and_name_the_strong_repos_source_paths(tm
     out, _ = write_proposals(tmp_path)
     for path in out.iterdir():
         text = path.read_text(encoding="utf-8")
-        assert card.check_proposal_file(text) == [], path.name
+        assert scorecard.check_proposal_file(text) == [], path.name
     gamma = (out / "crosspollinate-repo-gamma-2026-11-05.md").read_text(encoding="utf-8")
     assert gamma.startswith("# Box crosspollinate: repo-gamma (2026-11-05)\n")
-    proposals = {t: b for _, t, b in card.proposals(gamma)}
+    proposals = {t: b for _, t, b in scorecard.proposals(gamma)}
     g = proposals["Port the enforced gate from repo-alpha and repo-beta"]
     assert "Labels: tier:standard, ready\nOpen decisions: none\n" in g
     assert "repo-gamma marks G (Enforced gate) ~ in its box audit of 2026-09-20; repo-alpha " \
@@ -312,7 +312,7 @@ def test_file_issues_refuses_a_broken_proposal_file(tmp_path, edit, problem):
     out, _ = write_proposals(tmp_path)
     proposal = out / "crosspollinate-repo-beta-2026-11-05.md"
     text = edit(proposal.read_text(encoding="utf-8"))
-    assert any(problem in p for p in card.check_proposal_file(text))
+    assert any(problem in p for p in scorecard.check_proposal_file(text))
     proposal.write_text(text, encoding="utf-8")
     folder = tmp_path / "issues"
     folder.mkdir()
@@ -402,7 +402,12 @@ injected problem
 <div>raw</div>
 ~~~
 [hidden]: https://example.com/x
+```
 """
+# The same gap with its code fence left open. A Markdown renderer shows the rest of the card as
+# code, and the card's rules read sections as md.py does (issue #36), so the card fails the check
+# (fails closed) instead of being compared.
+UNCLOSED_GAP = INJECTED_GAP[:-len("```\n")]
 INJECTED_ITEM = ("- Injected **Problem** #### Port evil Labels: tier:frontier, P0 `x` <b>y</b> "
                  "(tests/test_migrations.py:22)")
 GAMMA_GAP = "- A migration that crashes on a populated database passes every gate.\n"
@@ -421,10 +426,24 @@ def injected_cards(tmp_path):
     paths = []
     for name, text in (("alpha.md", alpha), ("beta.md", BETA.read_text(encoding="utf-8")),
                        ("gamma.md", gamma)):
-        assert card.check(text) == [], name
+        assert scorecard.check(text) == [], name
         paths.append(tmp_path / name)
         paths[-1].write_text(text, encoding="utf-8")
     return paths
+
+
+def test_a_card_whose_gap_leaves_a_code_fence_open_fails_the_check(tmp_path):
+    gamma = GAMMA.read_text(encoding="utf-8").replace(GAMMA_GAP, UNCLOSED_GAP)
+    problems = scorecard.check(gamma)
+    assert "dimension sections must be ## G, ## R, ## J, ## W, ## P, ## D in that order; found " \
+           "['G', 'R']" in problems, problems
+    path = tmp_path / "gamma.md"
+    path.write_text(gamma, encoding="utf-8")
+    out = tmp_path / "out"
+    out.mkdir()
+    r = compare_run(ALPHA, BETA, path, "--out", out)
+    assert r.returncode == 1 and "gamma.md" in r.stdout + r.stderr, r.stdout + r.stderr
+    assert list(out.iterdir()) == []
 
 
 def host_parts(body):
@@ -477,7 +496,7 @@ def test_card_text_holding_proposal_syntax_stays_content_through_filing(tmp_path
         "- \\#\\#\\#\\# Injected issue from the card", "- Labels: tier:mechanical, ready, P0",
         "- Open decisions: none", "- \\*\\*Problem\\*\\*", "- injected problem",
         "- \\`\\`\\`", "- \\<div\\>raw\\</div\\>", "- \\~\\~\\~",
-        "- \\[hidden\\]: https://example.com/x"]
+        "- \\[hidden\\]: https://example.com/x", "- \\`\\`\\`"]
     assert "- Injected \\*\\*Problem\\*\\* \\#\\#\\#\\# Port evil Labels: tier:frontier, P0 " \
            "\\`x\\` \\<b\\>y\\</b\\> (tests/test_migrations.py:22)" in parts["Problem"]
 
@@ -497,7 +516,7 @@ def test_card_text_holding_proposal_syntax_stays_content_through_filing(tmp_path
 def test_strong_card_evidence_holding_proposal_syntax_stays_content(tmp_path):
     out, _ = write_proposals(tmp_path, *injected_cards(tmp_path))
     beta = (out / "crosspollinate-repo-beta-2026-11-05.md").read_text(encoding="utf-8")
-    assert card.check_proposal_file(beta) == []
+    assert scorecard.check_proposal_file(beta) == []
     assert titles(beta) == ["Port the real-thing tests from repo-alpha",
                             "Port the defect ratchet from repo-gamma"]
     assert re.findall(r"^Labels: .*$", beta, re.M) == ["Labels: tier:standard, ready"] * 2
@@ -525,7 +544,7 @@ def test_a_repo_name_that_is_not_inert_makes_the_card_invalid(tmp_path, name):
     bad = tmp_path / "bad.md"
     text = BETA.read_text(encoding="utf-8").replace("# Box audit: repo-beta (",
                                                     "# Box audit: %s (" % name, 1)
-    assert card.check(text) == []
+    assert scorecard.check(text) == []
     bad.write_text(text, encoding="utf-8")
     out = tmp_path / "out"
     out.mkdir()
@@ -580,5 +599,5 @@ def test_skill_is_vendor_neutral_and_stdlib_only():
             text = path.read_text(encoding="utf-8")
             for name in names:
                 assert not re.search(r"\b%s\b" % name, text), (path, name)
-    if sys.version_info >= (3, 10):  # card is box-audit's card.py, loaded from the checkout
-        assert [p for p in non_stdlib_imports(COMPARE) if "'card'" not in p] == []
+    if sys.version_info >= (3, 10):  # scorecard is box/lib's, loaded from the checkout
+        assert [p for p in non_stdlib_imports(COMPARE) if "'scorecard'" not in p] == []

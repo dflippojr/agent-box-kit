@@ -205,7 +205,11 @@ Each failed item is named with its problems; exit 1 means not ready, never an er
 is empty. One row per acceptance criterion: the script cannot count criteria, so the reviewer
 checks that. After the table, two subsections with text: `### Not verified` (what was not checked,
 and why) and `### Gate changes` (tests deleted, skipped or loosened, gate config changed, or
-`none`). Text inside HTML comments does not count, so a template's placeholder does not pass.
+`none`). Text inside HTML comments does not count, so a template's placeholder does not pass, and
+a comment left open hides the rest of the body, as on the host. The proof is read as the host
+renders it: a `## Proof` in fenced code is an example, not the section, and up to the proof's end
+a fence that does not start at column 0 (indented, in a list item or quote) or an HTML block fails
+the item, since what follows it may render as code.
 
 **Owner acceptance.** On a host, the accept label counts when it is on the PR, its last `labeled`
 event is by the owner, and that event is later than the push of the head commit (read from the

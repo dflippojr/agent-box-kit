@@ -33,16 +33,21 @@ unreadable card, two cards for one repo, a bad --max-age, an --out that is not a
 proposal file that already exists, or, with --strict, cards with different or unknown standards;
 nothing is written).
 """
-import argparse
-import datetime
-import re
 import sys
-from pathlib import Path
+# Before any other import: box/lib gets no bytecode beside the helpers.
+sys.dont_write_bytecode = True
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[1] / "box-audit" / "scripts"))
+from pathlib import Path  # noqa: E402
 
-import card  # noqa: E402
+# box/lib, in the checkout this file sits in, holds the helpers box scripts share (issue #36):
+# the score card's rules (scorecard), which box-audit's card.py checks with.
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+
+import argparse  # noqa: E402
+import datetime  # noqa: E402
+import re  # noqa: E402
+
+import scorecard  # noqa: E402
 
 RANK = {"✗": 0, "~": 1, "✓": 2, "★": 3}  # "–" (n/a) has no rank: never strongest
 TITLE = re.compile(r"^# Box audit: (.+) \((\d{4}-\d{2}-\d{2})\)\s*$")
@@ -67,8 +72,8 @@ class UsageError(Exception):
 
 def items(evidence, label):
     """Evidence items under `**label**`, each joined with its wrapped continuation lines, as
-    card.listed finds them; [] for `none` or a missing label."""
-    if not card.listed(evidence, label):
+    scorecard.listed finds them; [] for `none` or a missing label."""
+    if not scorecard.listed(evidence, label):
         return []
     m = re.search(r"^\*\*%s\*\*\s*$(.*?)(?=^\*\*|^#|\Z)" % re.escape(label), evidence,
                   re.M | re.S)
@@ -103,7 +108,7 @@ def read_card(path):
         text = Path(path).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as e:
         raise UsageError("cannot read %s: %s" % (path, e))
-    problems = card.check(text)
+    problems = scorecard.check(text)
     if problems:
         raise ValueError("%s: CARD_INVALID\n%s" % (path, "\n".join("- " + p for p in problems)))
     repo, date = TITLE.match(text.splitlines()[0]).groups()
@@ -115,18 +120,18 @@ def read_card(path):
     except ValueError:
         raise ValueError("%s: CARD_INVALID\n- date %s in the first line is not a calendar date"
                          % (path, date))
-    row = card.ROW.search(re.search(r"^- Score: (.*)$", text, re.M).group(1))
-    marks = card.parse_row(row.group(1))
+    row = scorecard.ROW.search(re.search(r"^- Score: (.*)$", text, re.M).group(1))
+    marks = scorecard.parse_row(row.group(1))
     dims = {}
-    for dim, _, body in card.sections(text):
-        evidence = card.part(body, "Evidence") or ""
+    for dim, _, body in scorecard.sections(text):
+        evidence = scorecard.part(body, "Evidence") or ""
         dims[dim] = {"verified": items(evidence, "Verified"),
                      "read": items(evidence, "Read only"),
-                     "gap": card.part(body, "Gap") or ""}
-    return {"path": str(path), "repo": repo, "date": date, "marks": dict(zip(card.DIMENSIONS,
+                     "gap": scorecard.part(body, "Gap") or ""}
+    return {"path": str(path), "repo": repo, "date": date, "marks": dict(zip(scorecard.DIMENSIONS,
                                                                            marks)),
-            "score": int(row.group(2)), "proven": card.proven(marks),
-            "standard": card.card_standard(text), "dims": dims}
+            "score": int(row.group(2)), "proven": scorecard.proven(marks),
+            "standard": scorecard.card_standard(text), "dims": dims}
 
 
 def strongest(cards, dim):
@@ -167,10 +172,10 @@ def standard_warning(cards):
 def matrix(cards):
     width = max(len("Repo"), max(len(c["repo"]) for c in cards))
     lines = ["%-*s  %-10s  %s  Score  Proven" % (width, "Repo", "Date",
-                                                 "  ".join(card.DIMENSIONS))]
+                                                 "  ".join(scorecard.DIMENSIONS))]
     for c in cards:
         lines.append("%-*s  %s  %s  → %-3d  %s" % (
-            width, c["repo"], c["date"], "  ".join(c["marks"][d] for d in card.DIMENSIONS),
+            width, c["repo"], c["date"], "  ".join(c["marks"][d] for d in scorecard.DIMENSIONS),
             c["score"], c["proven"]))
     return lines
 
@@ -205,7 +210,7 @@ def card_lines(texts):
 
 
 def practice(dim):
-    return "the " + card.NAMES[dim].lower()
+    return "the " + scorecard.NAMES[dim].lower()
 
 
 def proposal(weak, dim, mark, best):
@@ -220,7 +225,7 @@ def proposal(weak, dim, mark, best):
     lines = ["#### Port %s from %s" % (practice(dim), names), "",
              "Labels: tier:standard, ready", "Open decisions: none", "", "**Problem**",
              "%s marks %s (%s) %s in its box audit of %s; %s %s it %s. %s's gap there:" % (
-                 weak["repo"], dim, card.NAMES[dim], weak["marks"][dim], weak["date"], names,
+                 weak["repo"], dim, scorecard.NAMES[dim], weak["marks"][dim], weak["date"], names,
                  "marks" if len(best) == 1 else "mark", mark, weak["repo"])]
     lines += gap or ["- none written"]
     for c in best:
@@ -250,12 +255,12 @@ def proposal(weak, dim, mark, best):
 def proposals_for(weak, cards):
     """The proposal file text for `weak`, or None when no dimension is below the strongest."""
     sections = []
-    for dim in card.DIMENSIONS:
+    for dim in scorecard.DIMENSIONS:
         mark, best = strongest(cards, dim)
         if weak["marks"][dim] not in RANK or mark is None or \
                 RANK[weak["marks"][dim]] >= RANK[mark]:
             continue
-        sections += ["## %s: %s" % (dim, card.NAMES[dim]), "", "### Proposed issues", ""]
+        sections += ["## %s: %s" % (dim, scorecard.NAMES[dim]), "", "### Proposed issues", ""]
         sections += proposal(weak, dim, mark, best) + [""]
     if not sections:
         return None
@@ -276,12 +281,12 @@ def report(cards, max_age):
     if warning:
         lines.append("WARNING: " + warning)
     lines += [""] + matrix(cards) + ["", "Strongest per dimension:"]
-    for dim in card.DIMENSIONS:
+    for dim in scorecard.DIMENSIONS:
         mark, best = strongest(cards, dim)
         if mark is None:
-            lines += ["", "%s %s: none (n/a on every card)" % (dim, card.NAMES[dim])]
+            lines += ["", "%s %s: none (n/a on every card)" % (dim, scorecard.NAMES[dim])]
             continue
-        lines += ["", "%s %s: %s %s" % (dim, card.NAMES[dim], mark,
+        lines += ["", "%s %s: %s %s" % (dim, scorecard.NAMES[dim], mark,
                                         ", ".join(c["repo"] for c in best))]
         for c in best:
             lines += ["  %s (%s):" % (c["repo"], c["date"])] + quoted(c, dim, "    ")
