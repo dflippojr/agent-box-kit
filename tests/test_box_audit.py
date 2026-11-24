@@ -1757,11 +1757,11 @@ def test_refreshed_login_keeps_the_owners_file_mode(tmp_path):
     original, copy = tmp_path / "credentials.json", tmp_path / "judge-copy.json"
     original.write_text("t1")
     os.chmod(str(original), 0o600)
-    before = isolation.digest(original)
+    before = isolation.digest(original, tmp_path)
     copy.write_text("t2")
     old = os.umask(0o022)
     try:
-        isolation.write_back(original, copy, before)
+        isolation.write_back(original, copy, before, tmp_path, tmp_path)
     finally:
         os.umask(old)
     assert original.read_text() == "t2"

@@ -414,7 +414,8 @@ def session(profile, prompt, work_root, skill=None, skill_dir=None, files=None, 
                 (work / rel).write_bytes(text.encode("utf-8"))
             if skill_dir:
                 shutil.copytree(str(skill_dir), str(home / profile["skills_dir"] / skill))
-            env, copied = iso.copy_home(home, copy, keep, Path.home())
+            real_home = Path.home()
+            env, copied = iso.copy_home(home, copy, keep, real_home)
             argv = argv_for(profile, model, budget, allow)
             exe = shutil.which(argv[0], path=env.get("PATH"))
             if not exe:
@@ -437,7 +438,7 @@ def session(profile, prompt, work_root, skill=None, skill_dir=None, files=None, 
         finally:
             record["seconds"] = round(time.monotonic() - start, 1)
             for original, dst, before in copied:
-                iso.write_back(original, dst, before)
+                iso.write_back(original, dst, before, home, real_home)
         text = stdout.decode("utf-8", errors="replace")
         result, cost, commands, used = read_session(text, profile, skill or "")
         record.update(result=scrub(result, root), cost_usd=cost, skill_used=used,

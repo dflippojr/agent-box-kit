@@ -137,8 +137,8 @@ def test_write_back_refuses_a_copy_the_session_turned_into_a_link_out(tree, open
     os.remove(str(dst))
     os.symlink(str(tree["outside"] / "secret.json"), str(dst))
     isolation.write_back(original, dst, before, tree["home"], tree["real_home"])
-    assert (tree["real_home"] / ".agent" / "login.json").read_text() == "owner-login"
     assert read_outside(opened, tree["outside"]) == []
+    assert (tree["real_home"] / ".agent" / "login.json").read_text() == "owner-login"
 
 
 @needs_links
@@ -173,8 +173,8 @@ def test_write_back_refuses_an_original_that_now_leaves_the_owner_home(tree, ope
     (tree["outside"] / "dir" / "login.json").write_text("owner-login")  # same bytes as before
     del opened[:]
     isolation.write_back(original, dst, before, tree["home"], tree["real_home"])
-    assert (tree["outside"] / "dir" / "login.json").read_text() == "owner-login"
     assert read_outside(opened, tree["outside"]) == []
+    assert (tree["outside"] / "dir" / "login.json").read_text() == "owner-login"
 
 
 @needs_links
@@ -219,7 +219,7 @@ def test_contained_returns_the_resolved_path_inside_the_root(tmp_path):
     write(tmp_path, "a/b.txt", "x")
     assert paths.contained(tmp_path / "a" / "b.txt", tmp_path) == (tmp_path / "a" / "b.txt").resolve()
     assert paths.contained(tmp_path, tmp_path) == tmp_path.resolve()
-    with pytest.raises(ValueError):
+    with pytest.raises(FileNotFoundError):
         paths.contained(tmp_path / "a" / "missing.txt", tmp_path)  # strict by default
     assert paths.contained(tmp_path / "a" / "new" / "c.txt", tmp_path, strict=False) == (
         tmp_path.resolve() / "a" / "new" / "c.txt")

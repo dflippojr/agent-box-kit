@@ -8,6 +8,10 @@ run(bundle, command, keep, copy, timeout, out, work_root, protect) starts comman
 bundle/prompt.md on stdin, isolated, and returns judge.py run's exit code (0 output written, 1
 failed or timed out, 2 usage error). check_copy, unsafe_root, sweep, copy_home and write_back are
 its parts, which skill-eval's runner reuses with its own folder prefix and mark text.
+
+Every path digest, copy_home and write_back read, hash or copy comes from the command line, so
+each is first checked with paths.contained against the root it must stay under (the owner's
+home or the isolated one) and then used only in its resolved form (issue #47).
 """
 import hashlib
 import os
@@ -20,7 +24,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from paths import inside, is_link
+from paths import contained, inside, is_link
 
 ALLOW_ENV = ("PATH", "PATHEXT", "SYSTEMROOT", "SystemRoot", "WINDIR", "COMSPEC", "SystemDrive",
              "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "OS",
@@ -35,8 +39,10 @@ INSTRUCTION_ENTRIES = ("AGENTS.md", "AGENTS.override.md", "CLAUDE.md", "CLAUDE.l
                        "GEMINI.md", ".claude", ".codex", ".agents", ".gemini")
 
 
-def digest(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+def digest(path, root):
+    """SHA-256 of `path`, which must stay inside `root` (paths.contained raises ValueError)."""
+    with open(str(contained(path, root)), "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
 
 
 def check_copy(rel, real_home, protect=None):
@@ -47,6 +53,10 @@ def check_copy(rel, real_home, protect=None):
         return "looks like an instruction or memory file"
     if not (real_home / p).is_file():
         return "is not a file in the home directory"
+    try:
+        contained(real_home / p, real_home)
+    except ValueError:
+        return "leaves the home directory through a link"
     if protect and inside(real_home / p, protect):
         return "resolves inside the audited repo, where a refreshed login would be written back"
     if protect and os.stat(str(real_home / p)).st_nlink > 1:
@@ -128,14 +138,18 @@ def isolated_env(home, keep):
 def copy_home(home, copy, keep, real_home):
     """Copy each --copy-home file, already checked, from `real_home` into the empty `home` in
     order, then make the isolated environment. Return (env, copied); each copied entry is
-    (original resolved now, copy, digest of the copy) for write_back after the session. An
-    error propagates: the caller decides what it means, and nothing is written back."""
+    (original resolved now, copy, digest of the copy) for write_back after the session. The
+    source must stay inside `real_home` and the copy inside `home` (paths.contained), or
+    ValueError is raised before anything is read. An error propagates: the caller decides what
+    it means, and nothing is written back."""
     copied = []
     for rel in copy:
+        src = contained(real_home / rel, real_home)
         dst = home / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(str(real_home / rel), str(dst))
-        copied.append(((real_home / rel).resolve(), dst, digest(dst)))
+        target = contained(dst, home, strict=False)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(str(src), str(target))
+        copied.append((src, dst, digest(dst, home)))
     return isolated_env(home, keep), copied
 
 
@@ -181,7 +195,7 @@ def run(bundle, command, keep=(), copy=(), timeout=1800, out=None, work_root=Non
             return 1
         finally:
             for original, dst, before in copied:
-                write_back(original, dst, before)
+                write_back(original, dst, before, home, real_home)
         text = p.stdout.decode("utf-8", errors="replace").replace("\r\n", "\n")
         if p.returncode != 0 or not text.strip():
             print("judge: command exited %d with %d bytes of output\n%s" % (
@@ -198,11 +212,16 @@ def run(bundle, command, keep=(), copy=(), timeout=1800, out=None, work_root=Non
         shutil.rmtree(root, ignore_errors=True)
 
 
-def write_back(original, copy, before):
+def write_back(original, copy, before, home, real_home):
     """Keep a login the judge refreshed, unless the owner's file changed meanwhile. `original`
-    was resolved when it was copied; a folder on it that has become a link since is refused."""
+    was resolved when it was copied; a folder on it that has become a link since is refused.
+    The copy must still be inside the isolated `home` and the original inside `real_home`: a
+    session that swapped its copy for a link out is refused before the link is read."""
     try:
-        if not copy.is_file() or digest(copy) == before or digest(original) != before:
+        if not copy.is_file():
+            return
+        copy = contained(copy, home)
+        if digest(copy, home) == before or digest(original, real_home) != before:
             return
         if original.parent.resolve() != original.parent:
             raise OSError("a folder on its path is now a link")
@@ -220,5 +239,5 @@ def write_back(original, copy, before):
                 os.unlink(tmp)
             raise
         print("judge: wrote the refreshed %s back" % original.name, file=sys.stderr)
-    except OSError as e:
+    except (OSError, ValueError) as e:
         print("judge: could not write back %s: %s" % (original.name, e), file=sys.stderr)

@@ -9,6 +9,11 @@ propagates, so a caller that must refuse on doubt (linked) or keep on doubt deci
 linked(root, rel): rel, or a folder on the way to it from root, is a link; a component that
 cannot be checked counts as a link.
 inside(path, root): path, after links are resolved, is root or below it.
+contained(path, root, strict=True): path, resolved once, after checking that it stays inside root
+at every level: no `..`, not elsewhere, and no link on the way from root to it (the last part
+included) that resolves outside root. Raises ValueError otherwise, and FileNotFoundError when
+`strict` (the default) and path does not exist. The one containment check for paths an agent can
+supply (issue #47). Path.is_relative_to is 3.9+, so the check compares parents.
 startup_bytecode(root, where): why interpreter startup may have written bytecode inside root, or
 None. Startup runs before a script's first line, so only `python -B` (or PYTHONDONTWRITEBYTECODE)
 stops it. `where` names root in the message (default: the audited repo).
@@ -58,6 +63,35 @@ def linked(root, rel):
 def inside(path, root):
     path, root = Path(path).resolve(), Path(root).resolve()
     return path == root or root in path.parents
+
+
+def contained(path, root, strict=True):
+    base = Path(root)
+    real_root = base.resolve(strict=True)
+    path = Path(path)
+    for top in (base, base.absolute(), real_root):
+        try:
+            rel = path.relative_to(top)
+            break
+        except ValueError:
+            continue
+    else:
+        raise ValueError("%s is not under %s" % (path, real_root))
+    if ".." in rel.parts:
+        raise ValueError("%s leaves %s through .." % (path, real_root))
+    step = top
+    for part in rel.parts:
+        step = step / part
+        try:
+            out = is_link(step) and not inside(step, real_root)
+        except OSError:
+            out = True
+        if out:
+            raise ValueError("%s leaves %s through a link" % (path, real_root))
+    real = path.resolve(strict=strict)
+    if real != real_root and real_root not in real.parents:
+        raise ValueError("%s resolves outside %s" % (path, real_root))
+    return real
 
 
 def startup_bytecode(root, where="the audited repo"):
