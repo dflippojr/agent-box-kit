@@ -2,11 +2,18 @@
 the root it must stay under. A path that escapes (`..` segments, an absolute path elsewhere, a
 link that leaves the root at the top or at a nested level) is refused before any file outside
 the root is opened, so nothing there is read, hashed or copied. Paths inside the root work as
-before."""
+before.
+
+Review r1 on PR #48 added three cases: a link chain whose middle hop leaves the root and comes
+back; a swap of the file or a folder above it between the check and the open (anything the
+session started can outlive it and still write its home); and a session copy replaced by a hard
+link to an outside file."""
 import builtins
+import hashlib
 import io
 import os
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -45,9 +52,34 @@ def opened(monkeypatch):
             seen.append(Path(os.fsdecode(file)))
         return real(file, *a, **kw)
 
+    real_os_open = os.open
+
+    def os_spy(file, *a, **kw):
+        fd = real_os_open(file, *a, **kw)
+        where = fd_path(fd)
+        if where is not None:
+            seen.append(where)
+        elif "dir_fd" not in kw:
+            seen.append(Path(os.fsdecode(file)))
+        return fd
+
     monkeypatch.setattr(builtins, "open", spy)
     monkeypatch.setattr(io, "open", spy)
+    monkeypatch.setattr(os, "open", os_spy)
     return seen
+
+
+def fd_path(fd):
+    """Where an open descriptor really is, where the platform can say."""
+    try:
+        if sys.platform.startswith("linux"):
+            return Path(os.readlink("/proc/self/fd/%d" % fd))
+        if sys.platform == "darwin":
+            import fcntl
+            return Path(os.fsdecode(fcntl.fcntl(fd, fcntl.F_GETPATH, bytes(1024)).rstrip(b"\0")))
+    except OSError:
+        return None
+    return None
 
 
 def read_outside(seen, outside):
@@ -83,10 +115,28 @@ def out_and_back(t, root):
     return "via/back.json"
 
 
+def chained(t, root):
+    """An in-root link whose target is an outside link back into the root: the supplied path
+    and the final file are both inside, but the middle hop is not (review r1, finding 2)."""
+    write(root, "real.json", "inside")
+    os.symlink(str(root / "real.json"), str(t["outside"] / "hop.json"))
+    os.symlink(str(t["outside"] / "hop.json"), str(root / "alias.json"))
+    return "alias.json"
+
+
+def chained_folder(t, root):
+    write(root, "sub/real.json", "inside")
+    os.symlink(str(root / "sub"), str(t["outside"] / "hop"))
+    os.symlink(str(t["outside"] / "hop"), str(root / "via"))
+    return "via/real.json"
+
+
 ESCAPES = [pytest.param(dotdot, id="dotdot"), pytest.param(absolute, id="absolute"),
            pytest.param(top_link, id="top-link", marks=needs_links),
            pytest.param(nested_link, id="nested-link", marks=needs_links),
-           pytest.param(out_and_back, id="out-and-back", marks=needs_links)]
+           pytest.param(out_and_back, id="out-and-back", marks=needs_links),
+           pytest.param(chained, id="chained", marks=needs_links),
+           pytest.param(chained_folder, id="chained-folder", marks=needs_links)]
 
 
 @pytest.mark.parametrize("escape", ESCAPES)
@@ -223,3 +273,100 @@ def test_contained_returns_the_resolved_path_inside_the_root(tmp_path):
         paths.contained(tmp_path / "a" / "missing.txt", tmp_path)  # strict by default
     assert paths.contained(tmp_path / "a" / "new" / "c.txt", tmp_path, strict=False) == (
         tmp_path.resolve() / "a" / "new" / "c.txt")
+
+
+@needs_links
+@pytest.mark.parametrize("escape", [chained, chained_folder])
+def test_contained_refuses_a_chain_whose_middle_hop_leaves_the_root(tree, escape):
+    root = tree["home"]
+    rel = escape(tree, root)
+    with pytest.raises(ValueError):
+        paths.contained(root / rel, root)
+
+
+def swap(level, folder, name, outside):
+    """Replace folder/name (leaf) or folder (parent) with a link to `outside`."""
+    if level == "leaf":
+        os.remove(str(folder / name))
+        os.symlink(str(outside / "secret.json"), str(folder / name))
+    else:
+        os.rename(str(folder), str(folder.parent / (folder.name + "-old")))
+        os.symlink(str(outside / "dir"), str(folder))
+
+
+def swap_after_check(monkeypatch, level, folder, name, outside):
+    """Let the containment check pass, then swap, once: the window between check and open."""
+    real = paths.contained
+    done = []
+
+    def hook(path, root, *a, **kw):
+        out = real(path, root, *a, **kw)
+        if not done and Path(path).name == name:
+            done.append(1)
+            swap(level, folder, name, outside)
+        return out
+
+    monkeypatch.setattr(paths, "contained", hook)
+    monkeypatch.setattr(isolation, "contained", hook, raising=False)
+    return done
+
+
+@needs_links
+@pytest.mark.parametrize("level", ["leaf", "parent"])
+def test_digest_refuses_a_swap_between_check_and_open(tree, opened, monkeypatch, level):
+    home = tree["home"]
+    write(home, ".agent/login.json", "copy")
+    done = swap_after_check(monkeypatch, level, home / ".agent", "login.json", tree["outside"])
+    with pytest.raises((OSError, ValueError)):
+        isolation.digest(home / ".agent" / "login.json", home)
+    assert done and read_outside(opened, tree["outside"]) == []
+
+
+@needs_links
+@pytest.mark.parametrize("level", ["leaf", "parent"])
+def test_copy_home_refuses_a_source_swapped_between_check_and_open(tree, opened, monkeypatch,
+                                                                 level):
+    real_home, home = tree["real_home"], tree["home"]
+    done = swap_after_check(monkeypatch, level, real_home / ".agent", "login.json",
+                            tree["outside"])
+    with pytest.raises((OSError, ValueError)):
+        isolation.copy_home(home, [".agent/login.json"], (), real_home)
+    assert done and read_outside(opened, tree["outside"]) == []
+    assert not any(b"outside" in p.read_bytes() for p in home.rglob("*") if p.is_file())
+
+
+@needs_links
+def test_write_back_writes_the_bytes_it_hashed_not_a_later_swap(tree, monkeypatch):
+    """Something the session started swaps its copy for a link out right after write_back hashed
+    it. The owner's login gets the hashed bytes or nothing, never the outside file."""
+    home, real_home = tree["home"], tree["real_home"]
+    env, copied = isolation.copy_home(home, [".agent/login.json"], (), real_home)
+    (original, dst, before), = copied
+    dst.write_text("refreshed")
+    real_sha = hashlib.sha256
+    done = []
+
+    def sha(data=b""):
+        out = real_sha(data)
+        if not done and data == b"refreshed":
+            done.append(1)
+            swap("leaf", dst.parent, dst.name, tree["outside"])
+        return out
+
+    monkeypatch.setattr(isolation, "hashlib", SimpleNamespace(sha256=sha))
+    isolation.write_back(original, dst, before, home, real_home)
+    assert done
+    assert (real_home / ".agent" / "login.json").read_text() in ("refreshed", "owner-login")
+
+
+@pytest.mark.skipif(not hasattr(os, "link"), reason="no hard links")
+def test_write_back_refuses_a_copy_hard_linked_to_an_outside_file(tree):
+    """Review r1, advisory 3: a hard link has an in-root name, so only the descriptor's link
+    count shows it. A session copy with other links is refused."""
+    home, real_home = tree["home"], tree["real_home"]
+    env, copied = isolation.copy_home(home, [".agent/login.json"], (), real_home)
+    (original, dst, before), = copied
+    os.remove(str(dst))
+    os.link(str(tree["outside"] / "secret.json"), str(dst))
+    isolation.write_back(original, dst, before, home, real_home)
+    assert (real_home / ".agent" / "login.json").read_text() == "owner-login"
