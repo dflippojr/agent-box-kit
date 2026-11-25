@@ -209,3 +209,25 @@ def test_this_platform_refuses_copy_home_without_patching(owner):
     assert (isolation.check_copy(LOGIN, owner["real_home"]) or "").startswith(REFUSAL)
     with pytest.raises(OSError, match="folder descriptors"):
         paths.Anchor(owner["real_home"])
+
+
+@needs_links
+@pytest.mark.parametrize("caller", ["judge", "runner"])
+def test_a_home_reached_through_a_link_still_copies_and_writes_back(owner, monkeypatch, caller):
+    """A home whose path goes through a link (/home linked elsewhere, say) works as before: the
+    owner side is resolved once, at copy time, and matched against the anchor."""
+    link = owner["tmp"] / "home-link"
+    os.symlink(str(owner["real_home"]), str(link))
+    monkeypatch.setenv("HOME", str(link))
+    monkeypatch.setenv("USERPROFILE", str(link))
+    body = "open(os.path.join(h, '.agent', 'login.json'), 'w').write('refreshed')\n"
+    out = launch(caller, owner, agent(owner, body))
+    assert out == 0 if caller == "judge" else out["error"] is None
+    assert (owner["real_home"] / LOGIN).read_text() == "refreshed"
+
+
+@pytest.mark.skipif(not sys.platform.startswith(("linux", "darwin")), reason="Linux and macOS")
+def test_linux_and_macos_have_folder_descriptors():
+    """The PR claims --copy-home on Linux and macOS: if AT_FDS were false here, every anchored
+    test would skip and the job would pass with nothing checked."""
+    assert paths.AT_FDS
