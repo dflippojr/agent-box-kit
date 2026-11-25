@@ -371,3 +371,12 @@ def test_write_back_refuses_a_copy_hard_linked_to_an_outside_file(tree):
     os.link(str(tree["outside"] / "secret.json"), str(dst))
     isolation.write_back(original, dst, before, home, real_home)
     assert (real_home / ".agent" / "login.json").read_text() == "owner-login"
+
+
+def test_write_inside_checks_the_leaf_it_opens(tmp_path):
+    """Sonar S8707 on r1: write_inside opened the supplied leaf name, not the checked one."""
+    (tmp_path / "a").mkdir()
+    with pytest.raises(ValueError):
+        paths.write_inside(tmp_path / "a" / "..", tmp_path / "a", b"x")
+    paths.write_inside(tmp_path / "a" / "new.txt", tmp_path, b"x")
+    assert (tmp_path / "a" / "new.txt").read_bytes() == b"x"
