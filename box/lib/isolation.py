@@ -154,7 +154,7 @@ def copy_home(home, copy, keep, real_home):
     nothing is written back."""
     copied = []
     for rel in copy:
-        src = contained(real_home.given / rel, real_home.real)
+        src = contained(real_home.given / rel, real_home.given)  # resolved now, once
         data, mode = real_home.read(src)
         dst = home.given / rel
         home.write(dst, data, mode, make=True)

@@ -564,3 +564,15 @@ def test_a_closed_anchor_closes_once(tmp_path):
         assert a.fd is not None
     assert a.fd is None
     a.close()
+
+
+@needs_fds
+def test_when_the_owner_home_cannot_be_anchored_the_isolated_anchor_is_closed(tree, monkeypatch):
+    closed = []
+    real_close = paths.Anchor.close
+    monkeypatch.setattr(paths.Anchor, "close", lambda a: (closed.append(a.given),
+                                                          real_close(a)))
+    monkeypatch.setattr(isolation.Path, "home", classmethod(lambda cls: tree["tmp"] / "gone"))
+    with pytest.raises(FileNotFoundError):
+        isolation.anchors(tree["home"], [".agent/login.json"])
+    assert closed == [tree["home"]]
