@@ -8,19 +8,30 @@ run(bundle, command, keep, copy, timeout, out, work_root, protect) starts comman
 bundle/prompt.md on stdin, isolated, and returns judge.py run's exit code (0 output written, 1
 failed or timed out, 2 usage error). check_copy, unsafe_root, sweep, copy_home and write_back are
 its parts, which skill-eval's runner reuses with its own folder prefix and mark text.
+
+Every path digest, copy_home and write_back read, hash or copy comes from the command line
+(issue #47). Anything the session started can outlive it (run kills only the command, not its
+descendants) and can rename or replace anything in its run folder, the isolated home included.
+So both homes are opened as a paths.Anchor before the session starts, and every later read and
+write goes through those descriptors without following a link: the isolated home is never
+resolved again (review r2). Owner-side links that stay in the owner's home are resolved once,
+with paths.contained, when the file is copied. Each file is read once and only the bytes read are
+hashed or copied; each write is a new file renamed into place, so nothing at the destination is
+written through. A session copy with other hard links is refused. Without folder descriptors
+(Windows) --copy-home is refused: check_copy says so, and Anchor raises.
 """
 import hashlib
 import os
 import re
 import shutil
-import stat
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
 
-from paths import inside, is_link
+import paths
+from paths import Anchor, contained, inside, is_link
 
 ALLOW_ENV = ("PATH", "PATHEXT", "SYSTEMROOT", "SystemRoot", "WINDIR", "COMSPEC", "SystemDrive",
              "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "OS",
@@ -35,8 +46,9 @@ INSTRUCTION_ENTRIES = ("AGENTS.md", "AGENTS.override.md", "CLAUDE.md", "CLAUDE.l
                        "GEMINI.md", ".claude", ".codex", ".agents", ".gemini")
 
 
-def digest(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+def digest(path, anchor, single=False):
+    """SHA-256 of `path`, read through `anchor` (a paths.Anchor) without following a link."""
+    return hashlib.sha256(anchor.read(path, single)[0]).hexdigest()
 
 
 def check_copy(rel, real_home, protect=None):
@@ -47,10 +59,16 @@ def check_copy(rel, real_home, protect=None):
         return "looks like an instruction or memory file"
     if not (real_home / p).is_file():
         return "is not a file in the home directory"
+    try:
+        contained(real_home / p, real_home)
+    except ValueError:
+        return "leaves the home directory through a link"
     if protect and inside(real_home / p, protect):
         return "resolves inside the audited repo, where a refreshed login would be written back"
     if protect and os.stat(str(real_home / p)).st_nlink > 1:
         return "has other hard links, which may be inside the audited repo"
+    if not paths.AT_FDS:
+        return paths.NO_FDS
     return None
 
 
@@ -126,17 +144,41 @@ def isolated_env(home, keep):
 
 
 def copy_home(home, copy, keep, real_home):
-    """Copy each --copy-home file, already checked, from `real_home` into the empty `home` in
-    order, then make the isolated environment. Return (env, copied); each copied entry is
-    (original resolved now, copy, digest of the copy) for write_back after the session. An
-    error propagates: the caller decides what it means, and nothing is written back."""
+    """Copy each --copy-home file, already checked, from the owner's home into the empty
+    isolated home in order, then make the isolated environment. `home` and `real_home` are
+    paths.Anchor objects opened before the session. Return (env, copied); each copied entry is
+    (original resolved now, copy, digest of the copy) for write_back after the session. The
+    source must stay inside the owner's home (paths.contained resolves its in-home links, once)
+    and is read through the anchor; the copy is a new file in folders made through the
+    isolated home's descriptor. An error propagates: the caller decides what it means, and
+    nothing is written back."""
     copied = []
     for rel in copy:
-        dst = home / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(str(real_home / rel), str(dst))
-        copied.append(((real_home / rel).resolve(), dst, digest(dst)))
-    return isolated_env(home, keep), copied
+        src = contained(real_home.given / rel, real_home.given)  # resolved now, once
+        data, mode = real_home.read(src)
+        dst = home.given / rel
+        home.write(dst, data, mode, make=True)
+        copied.append((src, dst, hashlib.sha256(data).hexdigest()))
+    return isolated_env(home.given, keep), copied
+
+
+def anchors(home, copy):
+    """(isolated home, owner home) as paths.Anchor objects when files are to be copied, else
+    (None, None): a run without --copy-home needs no descriptors and works everywhere."""
+    if not copy:
+        return None, None
+    iso_home = Anchor(home)
+    try:
+        return iso_home, Anchor(Path.home())
+    except BaseException:
+        iso_home.close()
+        raise
+
+
+def close(*anchors_):
+    for a in anchors_:
+        if a is not None:
+            a.close()
 
 
 def run(bundle, command, keep=(), copy=(), timeout=1800, out=None, work_root=None,
@@ -153,21 +195,25 @@ def run(bundle, command, keep=(), copy=(), timeout=1800, out=None, work_root=Non
         print("judge: unsafe --work-root: %s. Pass --work-root with a folder outside the home "
               "and free of instruction files." % problem, file=sys.stderr)
         return 2
-    real_home = Path.home()
     for rel in copy:
-        problem = check_copy(rel, real_home, protect)
+        problem = check_copy(rel, Path.home(), protect)
         if problem:
             print("judge: refusing --copy-home %s: %s" % (rel, problem), file=sys.stderr)
             return 2
     sweep(work_root, max(STALE_SECONDS, 2 * timeout), protect)
     root = Path(tempfile.mkdtemp(prefix="box-audit-judge-", dir=str(work_root)))
+    home = real_home = None
     try:
         (root / OWN_MARK).write_text("made by box-audit judge.py; deleted when stale\n")
-        home, work = root / "home", root / "work"
+        work = root / "work"
         work.mkdir()
-        home.mkdir()
+        (root / "home").mkdir()
         shutil.copyfile(prompt, work / "prompt.md")
-        env, copied = copy_home(home, copy, keep, real_home)
+        home, real_home = anchors(root / "home", copy)
+        if home is None:
+            env, copied = isolated_env(root / "home", keep), []
+        else:
+            env, copied = copy_home(home, copy, keep, real_home)
         exe = shutil.which(command[0], path=env.get("PATH"))
         if not exe:
             print("judge: command not found: %s" % command[0], file=sys.stderr)
@@ -181,7 +227,7 @@ def run(bundle, command, keep=(), copy=(), timeout=1800, out=None, work_root=Non
             return 1
         finally:
             for original, dst, before in copied:
-                write_back(original, dst, before)
+                write_back(original, dst, before, home, real_home)
         text = p.stdout.decode("utf-8", errors="replace").replace("\r\n", "\n")
         if p.returncode != 0 or not text.strip():
             print("judge: command exited %d with %d bytes of output\n%s" % (
@@ -195,30 +241,26 @@ def run(bundle, command, keep=(), copy=(), timeout=1800, out=None, work_root=Non
             sys.stdout.buffer.write(p.stdout)
         return 0
     finally:
+        close(home, real_home)
         shutil.rmtree(root, ignore_errors=True)
 
 
-def write_back(original, copy, before):
-    """Keep a login the judge refreshed, unless the owner's file changed meanwhile. `original`
-    was resolved when it was copied; a folder on it that has become a link since is refused."""
+def write_back(original, copy, before, home, real_home):
+    """Keep a login the judge refreshed, unless the owner's file changed meanwhile. `home` and
+    `real_home` are the paths.Anchor objects opened before the session, so a session that
+    replaced its home, or the run folder above it, still has only its own copy read. `original`
+    was resolved when it was copied and is reached from the owner's home descriptor; a folder on
+    it that has become a link since is refused. A copy that is a link, not a regular file or
+    hard linked is refused. The copy is read once, and the bytes hashed are the bytes written,
+    as a new file renamed over the original with the original's mode."""
     try:
-        if not copy.is_file() or digest(copy) == before or digest(original) != before:
-            return
-        if original.parent.resolve() != original.parent:
-            raise OSError("a folder on its path is now a link")
-        # mkstemp creates the file exclusively and owner-only; it then takes the original's mode,
-        # so a private login never becomes readable by others on the way.
-        fd, tmp = tempfile.mkstemp(prefix=original.name + ".", suffix=".box-audit-tmp",
-                                   dir=str(original.parent))
         try:
-            with os.fdopen(fd, "wb") as f, open(copy, "rb") as src:
-                shutil.copyfileobj(src, f)
-            os.chmod(tmp, stat.S_IMODE(original.stat().st_mode))
-            os.replace(tmp, str(original))
-        except OSError:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
-            raise
+            data = home.read(copy, single=True)[0]
+        except FileNotFoundError:
+            return
+        if hashlib.sha256(data).hexdigest() == before or digest(original, real_home) != before:
+            return
+        real_home.write(original, data)
         print("judge: wrote the refreshed %s back" % original.name, file=sys.stderr)
-    except OSError as e:
+    except (OSError, ValueError) as e:
         print("judge: could not write back %s: %s" % (original.name, e), file=sys.stderr)

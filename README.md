@@ -95,6 +95,12 @@ The scripts are stdlib-only. CI (`.github/workflows/tests.yml`) runs them on Git
 macOS and Windows runners (Python 3.10) and on Ubuntu 22.04 with Python 3.8 and 3.14. See
 `EVIDENCE.md` for what the tests do and do not establish.
 
+One feature is not on Windows: `--copy-home` (box-audit's `judge.py` and `audit.py`, and
+skill-eval) copies a login into the isolated home and back through folder descriptors
+(`openat`), which Windows lacks. There it is refused with exit 2 and the error "needs folder
+descriptors (openat), which this platform lacks"; pass an API key with `--keep-env` instead.
+Runs without `--copy-home` work on Windows as before.
+
 Dependabot checks Actions and the pip manifests in `ci/` weekly. The SonarCloud workflow
 analyses both script trees, `agent-ready/scripts/*.py` and `box/**/*.py`, treats `tests/` as tests, imports subprocess coverage from a Python 3.12 test run (`.coveragerc`), and waits for the quality gate.
 Same-repository PRs, including Dependabot, are eligible; fork PRs are skipped. Without

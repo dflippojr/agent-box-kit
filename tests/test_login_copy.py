@@ -6,7 +6,6 @@ spies only record calls and pass them through to the real functions."""
 import hashlib
 import json
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -34,6 +33,8 @@ CALLERS = ("judge", "runner")
 
 @pytest.fixture
 def owner(tmp_path, monkeypatch):
+    if not isolation.paths.AT_FDS:  # test_isolation_anchor.py checks the refusal there
+        pytest.skip("--copy-home is refused without folder descriptors (Windows; #47 Decisions)")
     home = tmp_path / "owner-home"
     for rel, data in LOGINS.items():
         path = home / rel
@@ -59,9 +60,9 @@ def owner(tmp_path, monkeypatch):
             for rel in LOGINS}})
         return real_env(home_arg, keep)
 
-    def write_back_spy(original, copy, before):
+    def write_back_spy(original, copy, before, *roots):
         calls["write_back"].append((original, copy, before, copy.read_bytes()))
-        return real_write_back(original, copy, before)
+        return real_write_back(original, copy, before, *roots)
 
     monkeypatch.setattr(isolation, "isolated_env", env_spy)
     monkeypatch.setattr(isolation, "write_back", write_back_spy)
@@ -128,14 +129,14 @@ def test_copies_keep_order_bytes_resolved_originals_and_hashes_and_env_comes_aft
 def test_a_later_copy_that_fails_stops_before_the_env_and_writes_nothing_back(
         caller, owner, monkeypatch):
     rels = list(LOGINS)
-    real_copyfile = shutil.copyfile
+    real_read = isolation.paths.Anchor.read
 
-    def copyfile(src, dst, *a, **kw):
-        if Path(src) == owner["home"] / rels[1]:
+    def read(anchor, path, *a, **kw):  # where copy_home reads each source (issue #47)
+        if Path(path) == (owner["home"] / rels[1]).resolve():
             raise PermissionError("synthetic copy failure")
-        return real_copyfile(src, dst, *a, **kw)
+        return real_read(anchor, path, *a, **kw)
 
-    monkeypatch.setattr(shutil, "copyfile", copyfile)
+    monkeypatch.setattr(isolation.paths.Anchor, "read", read)
     command = cli(owner, refresh(rels, b"changed"))
     if caller == "judge":
         with pytest.raises(PermissionError, match="synthetic copy failure"):
@@ -208,7 +209,8 @@ def test_an_original_the_owner_changed_meanwhile_is_kept(caller, owner):
 @pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges on Windows")
 @pytest.mark.parametrize("caller", CALLERS)
 def test_the_original_is_resolved_when_copied_not_when_written_back(caller, owner):
-    first, second = owner["tmp"] / "store-a", owner["tmp"] / "store-b"
+    # Both stores are inside the owner's home: a link that leaves it is refused (issue #47).
+    first, second = owner["home"] / "store-a", owner["home"] / "store-b"
     write(first, "login.json", "one")
     write(second, "login.json", "other")
     link = owner["home"] / "linked"

@@ -1704,6 +1704,7 @@ def test_work_root_with_instruction_files_above_it_is_refused(owner, capfd):
     assert isolation.unsafe_root(owner["home"] / ".agent") is not None  # inside the home
 
 
+@pytest.mark.skipif(not isolation.paths.AT_FDS, reason="--copy-home is refused without folder descriptors (Windows; #47 Decisions)")
 def test_copy_home_copies_logins_refuses_instructions_and_keeps_refreshes(owner, capfd):
     refresh = owner["tmp"] / "cli" / "refresh.py"
     write(refresh.parent, refresh.name, "import os, sys\nsys.stdin.read()\n"
@@ -1741,6 +1742,7 @@ def test_folders_left_by_a_killed_run_are_swept(owner):
     assert not stale.exists() and fresh.exists() and other.exists() and unmarked.exists()
 
 
+@pytest.mark.skipif(not isolation.paths.AT_FDS, reason="--copy-home is refused without folder descriptors (Windows; #47 Decisions)")
 def test_refresh_is_not_written_over_a_newer_owner_login(owner):
     clash = owner["tmp"] / "cli" / "clash.py"
     real = owner["home"] / ".agent" / "credentials.json"
@@ -1752,16 +1754,17 @@ def test_refresh_is_not_written_over_a_newer_owner_login(owner):
     assert real.read_text() == "owner-newer"
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX file modes")
+@pytest.mark.skipif(os.name == "nt" or not isolation.paths.AT_FDS, reason="POSIX file modes")
 def test_refreshed_login_keeps_the_owners_file_mode(tmp_path):
     original, copy = tmp_path / "credentials.json", tmp_path / "judge-copy.json"
     original.write_text("t1")
     os.chmod(str(original), 0o600)
-    before = isolation.digest(original)
-    copy.write_text("t2")
     old = os.umask(0o022)
     try:
-        isolation.write_back(original, copy, before)
+        with isolation.paths.Anchor(tmp_path) as root:
+            before = isolation.digest(original, root)
+            copy.write_text("t2")
+            isolation.write_back(original, copy, before, root, root)
     finally:
         os.umask(old)
     assert original.read_text() == "t2"

@@ -25,6 +25,8 @@ Usage:
               the copy (a refreshed login) and the original is unchanged, the copy is written back
               with the original's file mode, to the path the original resolved to when it was
               copied; if a folder on that path has since become a link, it is not written back.
+              Linux and macOS only: it needs folder descriptors (openat), so on Windows it is
+              refused (exit 2).
   --work-root Where the judge's temporary home and working directory are made (default: the
               system temp dir). It must not be inside the real home, and neither it nor any
               folder above it may hold an instruction file or folder (AGENTS.md, CLAUDE.md,

@@ -401,6 +401,7 @@ def session(profile, prompt, work_root, skill=None, skill_dir=None, files=None, 
     except OSError as e:
         record.update(error="could not start: %s: %s" % (type(e).__name__, e), infra=True)
         return record
+    anchored = real_home = None
     try:
         # Until the agent starts, a failure is the harness's (infra): it says nothing about the
         # skill, and the report leaves it out instead of counting it against a version.
@@ -414,7 +415,11 @@ def session(profile, prompt, work_root, skill=None, skill_dir=None, files=None, 
                 (work / rel).write_bytes(text.encode("utf-8"))
             if skill_dir:
                 shutil.copytree(str(skill_dir), str(home / profile["skills_dir"] / skill))
-            env, copied = iso.copy_home(home, copy, keep, Path.home())
+            anchored, real_home = iso.anchors(home, copy)  # before the session (#47 r2)
+            if anchored is None:
+                env, copied = iso.isolated_env(home, keep), []
+            else:
+                env, copied = iso.copy_home(anchored, copy, keep, real_home)
             argv = argv_for(profile, model, budget, allow)
             exe = shutil.which(argv[0], path=env.get("PATH"))
             if not exe:
@@ -437,7 +442,7 @@ def session(profile, prompt, work_root, skill=None, skill_dir=None, files=None, 
         finally:
             record["seconds"] = round(time.monotonic() - start, 1)
             for original, dst, before in copied:
-                iso.write_back(original, dst, before)
+                iso.write_back(original, dst, before, anchored, real_home)
         text = stdout.decode("utf-8", errors="replace")
         result, cost, commands, used = read_session(text, profile, skill or "")
         record.update(result=scrub(result, root), cost_usd=cost, skill_used=used,
@@ -456,4 +461,5 @@ def session(profile, prompt, work_root, skill=None, skill_dir=None, files=None, 
         record["diffs"] = {k: scrub(v, root) for k, v in diffs.items()}
         return record
     finally:
+        iso.close(anchored, real_home)
         shutil.rmtree(str(root), ignore_errors=True)
