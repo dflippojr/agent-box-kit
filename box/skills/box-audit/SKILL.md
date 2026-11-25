@@ -21,7 +21,8 @@ as `../../STANDARD.md` and `scripts/judge.py`, are relative to the checkout, and
 symlink keeps them resolving from the link. On Windows, which applies `..` before following a
 link, do not install it: have the agent read this `SKILL.md` in the checkout, and run each script
 by path from there, as in `python -B <kit>/box/skills/box-audit/scripts/audit.py`, where `<kit>`
-is the checkout.
+is the checkout. On Windows, `--copy-home` is refused (it needs folder descriptors, which Windows
+lacks): pass an API key with `--keep-env` instead.
 
 ## Inputs
 

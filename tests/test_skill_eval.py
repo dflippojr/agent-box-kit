@@ -390,6 +390,7 @@ def test_description_change_that_stops_the_skill_being_picked_is_worse(env):
     assert "judge" not in results["signals"]
 
 
+@pytest.mark.skipif(not runner.iso.paths.AT_FDS, reason="--copy-home is refused without folder descriptors (Windows; #47 Decisions)")
 def test_sessions_are_isolated_and_cannot_tell_the_versions_apart(env):
     code, out = run_eval(env, env["a"], "--no-judge", "--no-trigger", "--repeats", "1",
                          "--copy-home", ".agent/login.json")

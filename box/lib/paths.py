@@ -16,15 +16,13 @@ comes back is refused too; more than MAX_LINKS hops (a loop) is refused. Raises 
 otherwise, and FileNotFoundError when `strict` (the default) and path does not exist. The one
 containment check for paths an agent can supply (issue #47). Path.is_relative_to is 3.9+, so the
 check compares parts.
-open_inside(path, root, single=False): (fd, resolved path) of a regular file that contained()
-passes, opened so that what is read is what was checked: on POSIX each folder of the resolved
-path is opened from / and the file from its folder's descriptor, none following a link, so a link
-swapped in after the check fails the open. Elsewhere, handle_path(fd) must still be inside root.
-The descriptor must be a regular file, and with `single` have no other hard links.
-open_dir_inside(path, root): a descriptor for folder path, opened the same way, or None where
-descriptors relative to a folder are not available (AT_FDS false: Windows).
-write_inside(path, root, data): create or truncate path, a file in a folder inside root, through
-that folder's descriptor without following a link, and write data.
+Anchor(root): root opened once, before anything untrusted can change it; every later path
+under it is reached from that descriptor, one folder at a time without following a link, and root
+is never resolved again (issue #47, review r2). open/read give a regular file (with `single`, one
+with no other hard links); write puts data at a path as a new file created exclusively in the
+verified folder, checked, then renamed over the entry, so an existing file is never written
+through. Where descriptors relative to a folder are missing (AT_FDS false: Windows), Anchor raises
+NoFolderDescriptors with NO_FDS: the owner's decision in #47 is to refuse there, not fall back.
 startup_bytecode(root, where): why interpreter startup may have written bytecode inside root, or
 None. Startup runs before a script's first line, so only `python -B` (or PYTHONDONTWRITEBYTECODE)
 stops it. `where` names root in the message (default: the audited repo).
@@ -81,8 +79,8 @@ NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 DIRECTORY = getattr(os, "O_DIRECTORY", 0)
 BINARY = getattr(os, "O_BINARY", 0)
 NONBLOCK = getattr(os, "O_NONBLOCK", 0)  # a FIFO swapped in must not block the open
-AT_FDS = bool(NOFOLLOW and DIRECTORY) and all(
-    f in os.supports_dir_fd for f in (os.open, os.stat, os.unlink, os.rename))
+AT_FDS = bool(NOFOLLOW and DIRECTORY) and hasattr(os, "fchmod") and all(
+    f in os.supports_dir_fd for f in (os.open, os.stat, os.unlink, os.rename, os.mkdir))
 
 
 def _under(path, tops):
@@ -169,53 +167,130 @@ def _open_dir(real):
     return fd
 
 
-def open_dir_inside(path, root):
-    if not AT_FDS:
-        return None
-    return _open_dir(contained(path, root))
+class NoFolderDescriptors(OSError):
+    """This platform cannot open a file relative to a folder descriptor (Windows)."""
 
 
-def open_inside(path, root, single=False):
-    real = contained(path, root)
-    if AT_FDS:
-        folder = _open_dir(real.parent)
+NO_FDS = ("needs folder descriptors (openat), which this platform lacks: --copy-home works on "
+          "Linux and macOS, not Windows")
+FOLDER_LINK = "a folder on its path is now a link"
+
+
+class Anchor:
+    """A root folder opened once, so every later path under it is reached from that descriptor
+    and the root is never resolved again (issue #47, review r2)."""
+
+    def __init__(self, root):
+        if not AT_FDS:
+            raise NoFolderDescriptors(NO_FDS)
+        self.given = Path(root)
+        self.real = self.given.resolve(strict=True)
+        self.fd = _open_dir(self.real)
+
+    def close(self):
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def rel(self, path):
+        """The parts of `path` below this root, compared by spelling only, never resolved."""
+        path = Path(path)
+        rel = _under(path, (self.given, self.given.absolute(), self.real))
+        if rel is None or not rel.parts or ".." in rel.parts:
+            raise ValueError("%s is not under %s" % (path, self.real))
+        return rel.parts
+
+    def _folder(self, parts, make=False):
+        """A descriptor for folder `parts` below the root, no part of it followed as a link.
+        With `make`, missing folders are created through the parent's descriptor."""
+        fd = os.dup(self.fd)
         try:
-            fd = os.open(real.name, os.O_RDONLY | NOFOLLOW | NONBLOCK, dir_fd=folder)
+            for name in parts:
+                if make:
+                    try:
+                        os.mkdir(name, 0o700, dir_fd=fd)
+                    except FileExistsError:
+                        pass
+                st = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                if is_link_stat(st):
+                    raise ValueError(FOLDER_LINK)
+                try:
+                    nxt = os.open(name, os.O_RDONLY | DIRECTORY | NOFOLLOW, dir_fd=fd)
+                except OSError:  # swapped since the stat: ELOOP or ENOTDIR, by platform
+                    raise ValueError(FOLDER_LINK)
+                os.close(fd)
+                fd = nxt
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
+
+    def open(self, path, single=False):
+        """A read descriptor for regular file `path`, opened without following a link; with
+        `single`, it must have no other hard links."""
+        parts = self.rel(path)
+        folder = self._folder(parts[:-1])
+        try:
+            fd = os.open(parts[-1], os.O_RDONLY | NOFOLLOW | NONBLOCK, dir_fd=folder)
         finally:
             os.close(folder)
-    else:
-        fd = os.open(str(real), os.O_RDONLY | BINARY)
-    try:
-        where = None if AT_FDS else handle_path(fd)
-        if where is not None:
-            top = os.path.normcase(str(Path(root).resolve()))
-            where = os.path.normcase(where)
-            if where != top and not where.startswith(top.rstrip(os.sep) + os.sep):
-                raise ValueError("%s was opened at %s, outside %s" % (path, where, top))
-        st = os.fstat(fd)
-        if not stat.S_ISREG(st.st_mode):
-            raise ValueError("%s is not a regular file" % path)
-        if single and st.st_nlink > 1:
-            raise ValueError("%s has other hard links, which may be outside %s" % (path, root))
-    except BaseException:
-        os.close(fd)
-        raise
-    return fd, real
-
-
-def write_inside(path, root, data):
-    real = contained(path, root, strict=False)  # the folder and the name opened are both checked
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | BINARY
-    if AT_FDS:
-        folder = _open_dir(real.parent)
         try:
-            fd = os.open(real.name, flags | NOFOLLOW, 0o666, dir_fd=folder)
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode):
+                raise ValueError("%s is not a regular file" % path)
+            if single and st.st_nlink > 1:
+                raise ValueError("%s has other hard links, which may be outside %s"
+                                 % (path, self.real))
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
+
+    def read(self, path, single=False):
+        """(bytes, mode) of regular file `path`, read once through open()."""
+        fd = self.open(path, single)
+        with os.fdopen(fd, "rb") as f:
+            return f.read(), stat.S_IMODE(os.fstat(f.fileno()).st_mode)
+
+    def write(self, path, data, mode=None, make=False):
+        """Put `data` at `path` as a new file: created exclusively in its verified folder,
+        checked (regular, one link), given `mode`, then renamed over the entry. An existing
+        file is never opened or truncated, so a hard link or FIFO there is only unlinked. With
+        mode None, the existing entry must be a regular file and its mode is kept."""
+        parts = self.rel(path)
+        folder = self._folder(parts[:-1], make)
+        try:
+            name = parts[-1]
+            if mode is None:
+                st = os.stat(name, dir_fd=folder, follow_symlinks=False)
+                if not stat.S_ISREG(st.st_mode):
+                    raise OSError("%s is no longer a regular file" % path)
+                mode = stat.S_IMODE(st.st_mode)
+            tmp = ".%s.%s.box-tmp" % (name, os.urandom(6).hex())
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | NOFOLLOW | BINARY, 0o600,
+                         dir_fd=folder)
+            try:
+                with os.fdopen(fd, "wb") as f:
+                    st = os.fstat(f.fileno())
+                    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+                        raise OSError("%s: the new file is not a single regular file" % path)
+                    f.write(data)
+                    os.fchmod(f.fileno(), mode)
+                os.rename(tmp, name, src_dir_fd=folder, dst_dir_fd=folder)
+            except BaseException:
+                try:
+                    os.unlink(tmp, dir_fd=folder)
+                except OSError:
+                    pass
+                raise
         finally:
             os.close(folder)
-    else:
-        fd = os.open(str(real), flags, 0o666)
-    with os.fdopen(fd, "wb") as f:
-        f.write(data)
 
 
 def startup_bytecode(root, where="the audited repo"):

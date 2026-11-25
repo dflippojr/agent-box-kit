@@ -37,6 +37,7 @@ Usage:
   --keep-env, --copy-home, --work-root   As for box-audit's judge.py: pass one environment
               variable through, copy one login file into each session's empty home, and choose
               where session folders are made (outside the home, no instruction files above).
+              --copy-home is refused on Windows, as there.
   --no-judge, --no-trigger   Skip the judge, or the near-miss sessions.
 
 Exit codes: 0 report written and every session and judge call worked (check: the task set is

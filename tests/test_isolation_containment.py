@@ -7,11 +7,15 @@ before.
 Review r1 on PR #48 added three cases: a link chain whose middle hop leaves the root and comes
 back; a swap of the file or a folder above it between the check and the open (anything the
 session started can outlive it and still write its home); and a session copy replaced by a hard
-link to an outside file."""
+link to an outside file.
+
+Review r2 anchored both homes (paths.Anchor, opened before the session): digest, copy_home and
+write_back take anchors, not root paths; see test_isolation_anchor.py for the r2 cases."""
 import builtins
 import hashlib
 import io
 import os
+import stat
 import sys
 from types import SimpleNamespace
 from pathlib import Path
@@ -27,6 +31,7 @@ import isolation  # noqa: E402
 import paths  # noqa: E402
 
 needs_links = pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges on Windows")
+needs_fds = pytest.mark.skipif(not paths.AT_FDS, reason="--copy-home is refused without folder descriptors (Windows; #47 Decisions)")
 
 
 @pytest.fixture
@@ -67,6 +72,31 @@ def opened(monkeypatch):
     monkeypatch.setattr(io, "open", spy)
     monkeypatch.setattr(os, "open", os_spy)
     return seen
+
+
+@pytest.fixture
+def anchor():
+    """paths.Anchor(root), closed when the test ends."""
+    if not paths.AT_FDS:
+        pytest.skip("--copy-home is refused without folder descriptors (Windows; #47 Decisions)")
+    made = []
+
+    def make(root):
+        made.append(paths.Anchor(root))
+        return made[-1]
+
+    yield make
+    for a in made:
+        a.close()
+
+
+@pytest.fixture
+def copy_in(tree, anchor):
+    """copy_home through anchors on the tree's two homes: (isolated, owner, copied)."""
+    def run(rels, real_home=None):
+        home, owner = anchor(tree["home"]), anchor(real_home or tree["real_home"])
+        return home, owner, isolation.copy_home(home, rels, (), owner)[1]
+    return run
 
 
 def fd_path(fd):
@@ -140,20 +170,21 @@ ESCAPES = [pytest.param(dotdot, id="dotdot"), pytest.param(absolute, id="absolut
 
 
 @pytest.mark.parametrize("escape", ESCAPES)
-def test_digest_refuses_a_path_that_escapes_its_root(tree, opened, escape):
+def test_digest_refuses_a_path_that_escapes_its_root(tree, opened, anchor, escape):
     root = tree["home"]
     rel = escape(tree, root)
-    with pytest.raises(ValueError):
-        isolation.digest(root / rel, root)
+    a = anchor(root)
+    with pytest.raises((OSError, ValueError)):  # a leaf link fails the no-follow open
+        isolation.digest(root / rel, a)
     assert read_outside(opened, tree["outside"]) == []
 
 
 @pytest.mark.parametrize("escape", ESCAPES)
-def test_copy_home_refuses_a_source_that_escapes_the_owner_home(tree, opened, escape):
+def test_copy_home_refuses_a_source_that_escapes_the_owner_home(tree, opened, copy_in, escape):
     rel = escape(tree, tree["real_home"])
     before = sorted(str(p) for p in tree["tmp"].rglob("*"))
     with pytest.raises(ValueError):
-        isolation.copy_home(tree["home"], [rel], (), tree["real_home"])
+        copy_in([rel])
     assert read_outside(opened, tree["outside"]) == []
     assert sorted(str(p) for p in tree["tmp"].rglob("*")) == before  # nothing was copied
     assert (tree["outside"] / "secret.json").read_text() == "outside-secret"
@@ -161,37 +192,43 @@ def test_copy_home_refuses_a_source_that_escapes_the_owner_home(tree, opened, es
 
 @needs_links
 @pytest.mark.parametrize("where", ["top", "nested"])
-def test_copy_home_refuses_a_destination_link_that_leaves_the_isolated_home(tree, opened, where):
+def test_copy_home_never_follows_a_destination_link_out_of_the_isolated_home(tree, opened,
+                                                                            copy_in, where):
     """A link already in the isolated home (a copied skill folder, say) must not carry the copy
-    out of it: copyfile follows a link at the destination."""
+    out of it. A link at the leaf is only replaced by the new file (r2: never written through);
+    a link on a folder on the way is refused."""
     home = tree["home"]
     if where == "top":
         (home / ".agent").mkdir()
         os.symlink(str(tree["outside"] / "secret.json"), str(home / ".agent" / "login.json"))
+        copy_in([".agent/login.json"])
+        assert not os.path.islink(str(home / ".agent" / "login.json"))
+        assert (home / ".agent" / "login.json").read_text() == "owner-login"
     else:
         os.symlink(str(tree["outside"] / "dir"), str(home / ".agent"))
-    with pytest.raises(ValueError):
-        isolation.copy_home(home, [".agent/login.json"], (), tree["real_home"])
+        with pytest.raises(ValueError, match="a folder on its path is now a link"):
+            copy_in([".agent/login.json"])
     assert read_outside(opened, tree["outside"]) == []
     assert (tree["outside"] / "secret.json").read_text() == "outside-secret"
     assert (tree["outside"] / "dir" / "login.json").read_text() == "outside-login"
 
 
 @needs_links
-def test_write_back_refuses_a_copy_the_session_turned_into_a_link_out(tree, opened):
+def test_write_back_refuses_a_copy_the_session_turned_into_a_link_out(tree, opened, copy_in):
     """The judged session swaps its copied login for a link to a file outside its home. The
     owner's login must stay as it was, and the outside file must not be read."""
-    env, copied = isolation.copy_home(tree["home"], [".agent/login.json"], (), tree["real_home"])
+    home, owner, copied = copy_in([".agent/login.json"])
     (original, dst, before), = copied
     del opened[:]
     os.remove(str(dst))
     os.symlink(str(tree["outside"] / "secret.json"), str(dst))
-    isolation.write_back(original, dst, before, tree["home"], tree["real_home"])
+    isolation.write_back(original, dst, before, home, owner)
     assert read_outside(opened, tree["outside"]) == []
     assert (tree["real_home"] / ".agent" / "login.json").read_text() == "owner-login"
 
 
 @needs_links
+@needs_fds
 def test_a_judged_session_cannot_write_an_outside_file_into_the_owners_login(tree, monkeypatch):
     """End to end through judge.py's run: the session replaces its copied login with a link to
     a file outside its home. On write-back, that file's bytes must not reach the owner's login."""
@@ -213,8 +250,8 @@ def test_a_judged_session_cannot_write_an_outside_file_into_the_owners_login(tre
 
 
 @needs_links
-def test_write_back_refuses_an_original_that_now_leaves_the_owner_home(tree, opened):
-    env, copied = isolation.copy_home(tree["home"], [".agent/login.json"], (), tree["real_home"])
+def test_write_back_refuses_an_original_that_now_leaves_the_owner_home(tree, opened, copy_in):
+    home, owner, copied = copy_in([".agent/login.json"])
     (original, dst, before), = copied
     dst.write_text("refreshed")
     agent = tree["real_home"] / ".agent"
@@ -222,7 +259,7 @@ def test_write_back_refuses_an_original_that_now_leaves_the_owner_home(tree, ope
     os.symlink(str(tree["outside"] / "dir"), str(agent))
     (tree["outside"] / "dir" / "login.json").write_text("owner-login")  # same bytes as before
     del opened[:]
-    isolation.write_back(original, dst, before, tree["home"], tree["real_home"])
+    isolation.write_back(original, dst, before, home, owner)
     assert read_outside(opened, tree["outside"]) == []
     assert (tree["outside"] / "dir" / "login.json").read_text() == "owner-login"
 
@@ -247,7 +284,7 @@ def test_check_copy_refuses_a_link_out_so_run_exits_2(tree, monkeypatch, capsys)
 
 
 @needs_links
-def test_a_link_that_stays_inside_the_home_still_works(tree):
+def test_a_link_that_stays_inside_the_home_still_works(tree, copy_in):
     """Behaviour inside the root is unchanged: a dotfile linked to another place in the same
     home is copied, recorded resolved, and hashed."""
     real_home = tree["real_home"]
@@ -255,13 +292,13 @@ def test_a_link_that_stays_inside_the_home_still_works(tree):
     (real_home / ".config").mkdir()
     os.symlink(str(real_home / "dotfiles"), str(real_home / ".config" / "tool"))
     assert isolation.check_copy(".config/tool/tool.json", real_home) is None
-    env, copied = isolation.copy_home(tree["home"], [".config/tool/tool.json"], (), real_home)
+    home, owner, copied = copy_in([".config/tool/tool.json"])
     (original, dst, before), = copied
     assert original == (real_home / "dotfiles" / "tool.json").resolve()
     assert dst.read_text() == "linked-login"
-    assert before == isolation.digest(dst, tree["home"])
+    assert before == isolation.digest(dst, home)
     dst.write_text("refreshed")
-    isolation.write_back(original, dst, before, tree["home"], real_home)
+    isolation.write_back(original, dst, before, home, owner)
     assert (real_home / "dotfiles" / "tool.json").read_text() == "refreshed"
 
 
@@ -306,42 +343,54 @@ def swap_after_check(monkeypatch, level, folder, name, outside):
             swap(level, folder, name, outside)
         return out
 
-    monkeypatch.setattr(paths, "contained", hook)
-    monkeypatch.setattr(isolation, "contained", hook, raising=False)
+    monkeypatch.setattr(isolation, "contained", hook)
     return done
 
 
 @needs_links
-@pytest.mark.parametrize("level", ["leaf", "parent"])
-def test_digest_refuses_a_swap_between_check_and_open(tree, opened, monkeypatch, level):
+def test_a_folder_swapped_between_its_check_and_its_open_is_refused(tree, opened, anchor,
+                                                                    monkeypatch):
+    """The anchored walk checks each folder, then opens it without following a link: a folder
+    swapped for a link in between fails the open."""
     home = tree["home"]
     write(home, ".agent/login.json", "copy")
+    a = anchor(home)
     del opened[:]  # the setup write above
-    done = swap_after_check(monkeypatch, level, home / ".agent", "login.json", tree["outside"])
-    with pytest.raises((OSError, ValueError)):
-        isolation.digest(home / ".agent" / "login.json", home)
+    real_stat = os.stat
+    done = []
+
+    def hook(p, *args, **kw):
+        out = real_stat(p, *args, **kw)
+        if not done and p == ".agent" and kw.get("dir_fd") is not None:
+            done.append(1)
+            swap("parent", home / ".agent", "login.json", tree["outside"])
+        return out
+
+    monkeypatch.setattr(os, "stat", hook)
+    with pytest.raises(ValueError, match="a folder on its path is now a link"):
+        isolation.digest(home / ".agent" / "login.json", a)
     assert done and read_outside(opened, tree["outside"]) == []
 
 
 @needs_links
 @pytest.mark.parametrize("level", ["leaf", "parent"])
 def test_copy_home_refuses_a_source_swapped_between_check_and_open(tree, opened, monkeypatch,
-                                                                 level):
+                                                                 copy_in, level):
     real_home, home = tree["real_home"], tree["home"]
     done = swap_after_check(monkeypatch, level, real_home / ".agent", "login.json",
                             tree["outside"])
     with pytest.raises((OSError, ValueError)):
-        isolation.copy_home(home, [".agent/login.json"], (), real_home)
+        copy_in([".agent/login.json"])
     assert done and read_outside(opened, tree["outside"]) == []
     assert not any(b"outside" in p.read_bytes() for p in home.rglob("*") if p.is_file())
 
 
 @needs_links
-def test_write_back_writes_the_bytes_it_hashed_not_a_later_swap(tree, monkeypatch):
+def test_write_back_writes_the_bytes_it_hashed_not_a_later_swap(tree, monkeypatch, copy_in):
     """Something the session started swaps its copy for a link out right after write_back hashed
     it. The owner's login gets the hashed bytes or nothing, never the outside file."""
-    home, real_home = tree["home"], tree["real_home"]
-    env, copied = isolation.copy_home(home, [".agent/login.json"], (), real_home)
+    real_home = tree["real_home"]
+    home, owner, copied = copy_in([".agent/login.json"])
     (original, dst, before), = copied
     dst.write_text("refreshed")
     real_sha = hashlib.sha256
@@ -355,31 +404,36 @@ def test_write_back_writes_the_bytes_it_hashed_not_a_later_swap(tree, monkeypatc
         return out
 
     monkeypatch.setattr(isolation, "hashlib", SimpleNamespace(sha256=sha))
-    isolation.write_back(original, dst, before, home, real_home)
+    isolation.write_back(original, dst, before, home, owner)
     assert done
     assert (real_home / ".agent" / "login.json").read_text() in ("refreshed", "owner-login")
 
 
 @pytest.mark.skipif(not hasattr(os, "link"), reason="no hard links")
-def test_write_back_refuses_a_copy_hard_linked_to_an_outside_file(tree):
+def test_write_back_refuses_a_copy_hard_linked_to_an_outside_file(tree, copy_in):
     """Review r1, advisory 3: a hard link has an in-root name, so only the descriptor's link
     count shows it. A session copy with other links is refused."""
-    home, real_home = tree["home"], tree["real_home"]
-    env, copied = isolation.copy_home(home, [".agent/login.json"], (), real_home)
+    real_home = tree["real_home"]
+    home, owner, copied = copy_in([".agent/login.json"])
     (original, dst, before), = copied
     os.remove(str(dst))
     os.link(str(tree["outside"] / "secret.json"), str(dst))
-    isolation.write_back(original, dst, before, home, real_home)
+    isolation.write_back(original, dst, before, home, owner)
     assert (real_home / ".agent" / "login.json").read_text() == "owner-login"
 
 
-def test_write_inside_checks_the_leaf_it_opens(tmp_path):
-    """Sonar S8707 on r1: write_inside opened the supplied leaf name, not the checked one."""
+def test_an_anchor_takes_only_paths_spelled_below_its_root(tmp_path, anchor):
+    """Anchor.rel compares spelling only (the root is never resolved again), so `..`, the root
+    itself and a path elsewhere are refused before anything is opened."""
     (tmp_path / "a").mkdir()
-    with pytest.raises(ValueError):
-        paths.write_inside(tmp_path / "a" / "..", tmp_path / "a", b"x")
-    paths.write_inside(tmp_path / "a" / "new.txt", tmp_path, b"x")
-    assert (tmp_path / "a" / "new.txt").read_bytes() == b"x"
+    a = anchor(tmp_path / "a")
+    for bad in (tmp_path / "a" / "..", tmp_path / "a", tmp_path / "b" / "x", Path("rel/x")):
+        with pytest.raises(ValueError, match="is not under"):
+            a.write(bad, b"x", 0o600)
+    a.write(tmp_path / "a" / "new" / "c.txt", b"x", 0o600, make=True)
+    assert (tmp_path / "a" / "new" / "c.txt").read_bytes() == b"x"
+    a.write(tmp_path.resolve() / "a" / "new" / "c.txt", b"y")  # the resolved spelling too
+    assert (tmp_path / "a" / "new" / "c.txt").read_bytes() == b"y"
 
 
 # Edge branches of the hop walk, the fallback without folder descriptors (Windows), and the
@@ -447,63 +501,66 @@ def test_windows_link_targets_lose_their_long_path_prefix(monkeypatch):
         assert paths._readlink("any") == plain
 
 
-@pytest.mark.skipif(os.name == "nt", reason="a folder cannot be opened as a file on Windows")
-def test_open_inside_refuses_what_is_not_a_regular_file(tmp_path):
+def test_an_anchor_refuses_to_read_what_is_not_a_regular_file(tmp_path, anchor):
     (tmp_path / "dir").mkdir()
     with pytest.raises(ValueError, match="not a regular file"):
-        paths.open_inside(tmp_path / "dir", tmp_path)
+        anchor(tmp_path).read(tmp_path / "dir")
 
 
-def test_without_folder_descriptors_copy_and_write_back_still_work(tree, monkeypatch):
-    """The Windows branch, run here by switching AT_FDS off."""
+def test_without_folder_descriptors_there_is_no_anchor_and_no_fallback(tree, monkeypatch):
+    """The owner's decision in #47: Windows refuses, it does not fall back to path calls."""
     monkeypatch.setattr(paths, "AT_FDS", False)
-    home, real_home = tree["home"], tree["real_home"]
-    assert paths.open_dir_inside(home, home) is None
-    env, copied = isolation.copy_home(home, [".agent/login.json"], (), real_home)
-    (original, dst, before), = copied
-    assert dst.read_text() == "owner-login"
-    dst.write_text("refreshed")
-    isolation.write_back(original, dst, before, home, real_home)
-    assert (real_home / ".agent" / "login.json").read_text() == "refreshed"
-    assert sorted(p.name for p in (real_home / ".agent").iterdir()) == ["login.json"]
+    with pytest.raises(paths.NoFolderDescriptors, match="not Windows"):
+        paths.Anchor(tree["home"])
+    with pytest.raises(paths.NoFolderDescriptors):
+        isolation.anchors(tree["home"], [".agent/login.json"])
+    assert isolation.anchors(tree["home"], []) == (None, None)  # no --copy-home: no anchor
 
 
-def test_without_folder_descriptors_the_opened_handle_must_be_inside(tree, monkeypatch):
-    monkeypatch.setattr(paths, "AT_FDS", False)
-    home = tree["home"]
-    write(home, "login.json", "copy")
-    monkeypatch.setattr(paths, "handle_path", lambda fd: str(tree["outside"] / "secret.json"))
-    with pytest.raises(ValueError, match="outside"):
-        isolation.digest(home / "login.json", home)
-    monkeypatch.setattr(paths, "handle_path", lambda fd: str((home / "login.json").resolve()))
-    assert isolation.digest(home / "login.json", home) == hashlib.sha256(b"copy").hexdigest()
-
-
-def test_write_back_skips_a_copy_the_session_deleted(tree):
-    home, real_home = tree["home"], tree["real_home"]
-    env, copied = isolation.copy_home(home, [".agent/login.json"], (), real_home)
+def test_write_back_skips_a_copy_the_session_deleted(tree, copy_in):
+    real_home = tree["real_home"]
+    home, owner, copied = copy_in([".agent/login.json"])
     (original, dst, before), = copied
     os.remove(str(dst))
-    isolation.write_back(original, dst, before, home, real_home)
+    isolation.write_back(original, dst, before, home, owner)
     assert (real_home / ".agent" / "login.json").read_text() == "owner-login"
 
 
-@pytest.mark.skipif(not paths.AT_FDS, reason="the descriptor branch")
-def test_replace_refuses_an_original_that_is_no_longer_a_file(tmp_path):
+def test_a_write_over_what_is_no_longer_a_file_is_refused(tmp_path, anchor):
     (tmp_path / "login.json").mkdir()
     with pytest.raises(OSError, match="no longer a regular file"):
-        isolation.replace_file(tmp_path / "login.json", tmp_path, b"x")
+        anchor(tmp_path).write(tmp_path / "login.json", b"x")
 
 
-@pytest.mark.skipif(not paths.AT_FDS, reason="the descriptor branch")
-def test_a_failed_replace_leaves_no_temp_file(tmp_path, monkeypatch):
+def test_a_failed_write_leaves_no_temp_file(tmp_path, monkeypatch, anchor):
     write(tmp_path, "login.json", "old")
+    a = anchor(tmp_path)
 
-    def rename(*a, **kw):
+    def rename(*args, **kw):
         raise OSError("synthetic rename failure")
 
     monkeypatch.setattr(os, "rename", rename)
     with pytest.raises(OSError, match="synthetic"):
-        isolation.replace_file(tmp_path / "login.json", tmp_path, b"new")
+        a.write(tmp_path / "login.json", b"new")
     assert [p.name for p in tmp_path.iterdir()] == ["login.json"]
     assert (tmp_path / "login.json").read_text() == "old"
+
+
+def test_a_new_file_that_is_not_single_is_not_used(tmp_path, monkeypatch, anchor):
+    """The write checks the descriptor it created (regular, one link) before writing to it."""
+    a = anchor(tmp_path)
+    real_fstat = os.fstat
+    monkeypatch.setattr(os, "fstat", lambda fd: SimpleNamespace(
+        st_mode=stat.S_IFREG | 0o600, st_nlink=2) if fd > 2 else real_fstat(fd))
+    with pytest.raises(OSError, match="not a single regular file"):
+        a.write(tmp_path / "login.json", b"x", 0o600)
+    monkeypatch.setattr(os, "fstat", real_fstat)
+    assert list(tmp_path.iterdir()) == []
+
+
+@needs_fds
+def test_a_closed_anchor_closes_once(tmp_path):
+    with paths.Anchor(tmp_path) as a:
+        assert a.fd is not None
+    assert a.fd is None
+    a.close()

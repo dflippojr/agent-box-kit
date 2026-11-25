@@ -28,6 +28,7 @@ import paths  # noqa: E402
 import runner  # noqa: E402
 
 needs_links = pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges on Windows")
+needs_fds = pytest.mark.skipif(not paths.AT_FDS, reason="--copy-home is refused without folder descriptors (Windows; #47 Decisions)")
 LOGIN = ".agent/login.json"
 REFUSAL = "needs folder descriptors (openat), which this platform lacks"
 
@@ -103,6 +104,7 @@ def plant_before_copy(monkeypatch, plant):
     monkeypatch.setattr(shutil, "copyfile", copyfile)
 
 
+@needs_fds
 @pytest.mark.skipif(not hasattr(os, "link"), reason="no hard links")
 def test_a_destination_hard_linked_outside_is_not_written_through(owner, monkeypatch):
     """Review r2, finding 2: copying into an existing destination entry that is a hard link to
@@ -121,6 +123,7 @@ def test_a_destination_hard_linked_outside_is_not_written_through(owner, monkeyp
     assert (owner["real_home"] / LOGIN).read_text() == "owner-login"
 
 
+@needs_fds
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no FIFOs")
 def test_a_fifo_at_the_destination_does_not_block_the_copy(owner, monkeypatch):
     """Review r2, finding 2: a FIFO at the destination must not block a write-only open."""
@@ -148,6 +151,7 @@ def test_a_fifo_at_the_destination_does_not_block_the_copy(owner, monkeypatch):
 
 
 @needs_links
+@needs_fds
 def test_a_folder_swapped_during_the_copy_creates_nothing_outside(owner, monkeypatch):
     """Review r2, finding 2: a folder made for the copy and then swapped for a link out must not
     let the next folder be made outside the home."""

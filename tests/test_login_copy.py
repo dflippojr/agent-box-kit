@@ -33,6 +33,8 @@ CALLERS = ("judge", "runner")
 
 @pytest.fixture
 def owner(tmp_path, monkeypatch):
+    if not isolation.paths.AT_FDS:  # test_isolation_anchor.py checks the refusal there
+        pytest.skip("--copy-home is refused without folder descriptors (Windows; #47 Decisions)")
     home = tmp_path / "owner-home"
     for rel, data in LOGINS.items():
         path = home / rel
@@ -127,14 +129,14 @@ def test_copies_keep_order_bytes_resolved_originals_and_hashes_and_env_comes_aft
 def test_a_later_copy_that_fails_stops_before_the_env_and_writes_nothing_back(
         caller, owner, monkeypatch):
     rels = list(LOGINS)
-    real_open_inside = isolation.open_inside
+    real_read = isolation.paths.Anchor.read
 
-    def open_inside(path, root, *a, **kw):  # where copy_home reads each source (issue #47)
-        if Path(path) == owner["home"] / rels[1]:
+    def read(anchor, path, *a, **kw):  # where copy_home reads each source (issue #47)
+        if Path(path) == (owner["home"] / rels[1]).resolve():
             raise PermissionError("synthetic copy failure")
-        return real_open_inside(path, root, *a, **kw)
+        return real_read(anchor, path, *a, **kw)
 
-    monkeypatch.setattr(isolation, "open_inside", open_inside)
+    monkeypatch.setattr(isolation.paths.Anchor, "read", read)
     command = cli(owner, refresh(rels, b"changed"))
     if caller == "judge":
         with pytest.raises(PermissionError, match="synthetic copy failure"):

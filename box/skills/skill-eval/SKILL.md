@@ -19,7 +19,9 @@ Install it by symlinking this folder into your skills folder, not by copying it:
 box-audit's judge isolation from `box/lib` in the checkout it sits in, and the `../box-audit/`
 paths here resolve through the link on POSIX only. On Windows, do not install it: have the agent
 read this `SKILL.md` in the checkout, and run each script by path from there, as in
-`python <kit>/box/skills/skill-eval/scripts/skill_eval.py`, where `<kit>` is the checkout.
+`python <kit>/box/skills/skill-eval/scripts/skill_eval.py`, where `<kit>` is the checkout. On
+Windows, `--copy-home` is refused (it needs folder descriptors, which Windows lacks): pass an API
+key with `--keep-env` instead.
 
 ## What one run does
 
