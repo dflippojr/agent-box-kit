@@ -428,8 +428,10 @@ def test_a_part_that_cannot_be_checked_counts_as_leaving(tmp_path, monkeypatch):
         paths.contained(tmp_path / "a" / "b.txt", tmp_path)
     monkeypatch.setattr(os, "lstat", real_lstat)
 
-    def readlink(p, *a, **kw):
-        raise OSError("synthetic")
+    def readlink(p, *a, **kw):  # only the link: Python 3.8's Path.resolve reads links too
+        if os.path.basename(str(p)) == "l":
+            raise OSError("synthetic")
+        return real_readlink(p, *a, **kw)
 
     monkeypatch.setattr(os, "readlink", readlink)
     with pytest.raises(ValueError, match="through a link"):
