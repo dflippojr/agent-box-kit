@@ -206,16 +206,16 @@ def open_inside(path, root, single=False):
 
 
 def write_inside(path, root, data):
-    path = Path(path)
+    real = contained(path, root, strict=False)  # the folder and the name opened are both checked
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | BINARY
-    folder = open_dir_inside(path.parent, root)
-    if folder is None:
-        fd = os.open(str(contained(path, root, strict=False)), flags, 0o666)
-    else:
+    if AT_FDS:
+        folder = _open_dir(real.parent)
         try:
-            fd = os.open(path.name, flags | NOFOLLOW, 0o666, dir_fd=folder)
+            fd = os.open(real.name, flags | NOFOLLOW, 0o666, dir_fd=folder)
         finally:
             os.close(folder)
+    else:
+        fd = os.open(str(real), flags, 0o666)
     with os.fdopen(fd, "wb") as f:
         f.write(data)
 
