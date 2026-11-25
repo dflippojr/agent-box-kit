@@ -380,3 +380,128 @@ def test_write_inside_checks_the_leaf_it_opens(tmp_path):
         paths.write_inside(tmp_path / "a" / "..", tmp_path / "a", b"x")
     paths.write_inside(tmp_path / "a" / "new.txt", tmp_path, b"x")
     assert (tmp_path / "a" / "new.txt").read_bytes() == b"x"
+
+
+# Edge branches of the hop walk, the fallback without folder descriptors (Windows), and the
+# error paths of write-back's replace.
+
+@needs_links
+def test_a_relative_link_target_is_walked_hop_by_hop(tree):
+    root = tree["home"]
+    write(root, "real.json", "inside")
+    (root / "sub").mkdir()
+    os.symlink("../real.json", str(root / "sub" / "up.json"))  # .. that stays inside
+    assert paths.contained(root / "sub" / "up.json", root) == (root / "real.json").resolve()
+    os.symlink("../out/secret.json", str(root / "climb.json"))  # .. above the root
+    with pytest.raises(ValueError, match="through a link"):
+        paths.contained(root / "climb.json", root)
+
+
+@needs_links
+def test_a_link_loop_is_refused(tmp_path):
+    os.symlink("b", str(tmp_path / "a"))
+    os.symlink("a", str(tmp_path / "b"))
+    with pytest.raises(ValueError, match="a loop"):
+        paths.contained(tmp_path / "a", tmp_path)
+
+
+@needs_links
+def test_a_missing_path_whose_link_climbs_is_refused_when_not_strict(tmp_path):
+    os.symlink("nope/../../x", str(tmp_path / "lnk"))
+    with pytest.raises(ValueError):
+        paths.contained(tmp_path / "lnk", tmp_path, strict=False)
+
+
+@needs_links
+def test_a_part_that_cannot_be_checked_counts_as_leaving(tmp_path, monkeypatch):
+    write(tmp_path, "a/b.txt", "x")
+    os.symlink(str(tmp_path / "a"), str(tmp_path / "l"))
+    real_lstat, real_readlink = os.lstat, os.readlink
+
+    def lstat(p, *a, **kw):
+        if os.path.basename(str(p)) == "a":
+            raise PermissionError("synthetic")
+        return real_lstat(p, *a, **kw)
+
+    monkeypatch.setattr(os, "lstat", lstat)
+    with pytest.raises(ValueError, match="through a link"):
+        paths.contained(tmp_path / "a" / "b.txt", tmp_path)
+    monkeypatch.setattr(os, "lstat", real_lstat)
+
+    def readlink(p, *a, **kw):
+        raise OSError("synthetic")
+
+    monkeypatch.setattr(os, "readlink", readlink)
+    with pytest.raises(ValueError, match="through a link"):
+        paths.contained(tmp_path / "l" / "b.txt", tmp_path)
+    monkeypatch.setattr(os, "readlink", real_readlink)
+
+
+def test_windows_link_targets_lose_their_long_path_prefix(monkeypatch):
+    for raw, plain in (("\\\\?\\C:\\home\\x", "C:\\home\\x"),
+                       ("\\\\?\\UNC\\server\\share\\x", "\\\\server\\share\\x"),
+                       ("rel/x", "rel/x")):
+        monkeypatch.setattr(os, "readlink", lambda p, raw=raw: raw)
+        assert paths._readlink("any") == plain
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a folder cannot be opened as a file on Windows")
+def test_open_inside_refuses_what_is_not_a_regular_file(tmp_path):
+    (tmp_path / "dir").mkdir()
+    with pytest.raises(ValueError, match="not a regular file"):
+        paths.open_inside(tmp_path / "dir", tmp_path)
+
+
+def test_without_folder_descriptors_copy_and_write_back_still_work(tree, monkeypatch):
+    """The Windows branch, run here by switching AT_FDS off."""
+    monkeypatch.setattr(paths, "AT_FDS", False)
+    home, real_home = tree["home"], tree["real_home"]
+    assert paths.open_dir_inside(home, home) is None
+    env, copied = isolation.copy_home(home, [".agent/login.json"], (), real_home)
+    (original, dst, before), = copied
+    assert dst.read_text() == "owner-login"
+    dst.write_text("refreshed")
+    isolation.write_back(original, dst, before, home, real_home)
+    assert (real_home / ".agent" / "login.json").read_text() == "refreshed"
+    assert sorted(p.name for p in (real_home / ".agent").iterdir()) == ["login.json"]
+
+
+def test_without_folder_descriptors_the_opened_handle_must_be_inside(tree, monkeypatch):
+    monkeypatch.setattr(paths, "AT_FDS", False)
+    home = tree["home"]
+    write(home, "login.json", "copy")
+    monkeypatch.setattr(paths, "handle_path", lambda fd: str(tree["outside"] / "secret.json"))
+    with pytest.raises(ValueError, match="outside"):
+        isolation.digest(home / "login.json", home)
+    monkeypatch.setattr(paths, "handle_path", lambda fd: str((home / "login.json").resolve()))
+    assert isolation.digest(home / "login.json", home) == hashlib.sha256(b"copy").hexdigest()
+
+
+def test_write_back_skips_a_copy_the_session_deleted(tree):
+    home, real_home = tree["home"], tree["real_home"]
+    env, copied = isolation.copy_home(home, [".agent/login.json"], (), real_home)
+    (original, dst, before), = copied
+    os.remove(str(dst))
+    isolation.write_back(original, dst, before, home, real_home)
+    assert (real_home / ".agent" / "login.json").read_text() == "owner-login"
+
+
+@pytest.mark.skipif(not paths.AT_FDS, reason="the descriptor branch")
+def test_replace_refuses_an_original_that_is_no_longer_a_file(tmp_path):
+    (tmp_path / "login.json").mkdir()
+    with pytest.raises(OSError, match="no longer a regular file"):
+        isolation.replace_file(tmp_path / "login.json", tmp_path, b"x")
+
+
+@pytest.mark.skipif(not paths.AT_FDS, reason="the descriptor branch")
+def test_a_failed_replace_leaves_no_temp_file(tmp_path, monkeypatch):
+    write(tmp_path, "login.json", "old")
+
+    def rename(*a, **kw):
+        raise OSError("synthetic rename failure")
+
+    monkeypatch.setattr(os, "rename", rename)
+    with pytest.raises(OSError, match="synthetic"):
+        isolation.replace_file(tmp_path / "login.json", tmp_path, b"new")
+    assert [p.name for p in tmp_path.iterdir()] == ["login.json"]
+    assert (tmp_path / "login.json").read_text() == "old"

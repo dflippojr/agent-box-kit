@@ -117,9 +117,7 @@ def contained(path, root, strict=True):
     out = ValueError("%s leaves %s through a link" % (path, real_root))
     cur, todo, hops = real_root, list(rel.parts), 0  # cur: resolved, link free, inside root
     while todo:
-        part = todo.pop(0)
-        if part in ("", "."):
-            continue
+        part = todo.pop(0)  # Path parts are never "" or "."
         if part == "..":  # only from a link's target
             if cur == real_root:
                 raise out
